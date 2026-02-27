@@ -1,0 +1,428 @@
+:root {
+  color-scheme: dark;
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  background: radial-gradient(circle at top left, #1d2230 0%, #101014 60%);
+  color: #e6e6ec;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ============================================================
+   App Shell — Grid Layout
+   ┌─[ WorkspaceTabs ]────────────────────────────┐
+   │              │ [TerminalTabs]                 │
+   │ [Sidebar]    │ [TerminalView (aktives)]       │
+   │              │                                │
+   ├──────────────┴────────────────────────────────┤
+   │ [StatusBar]                                   │
+   └───────────────────────────────────────────────┘
+   ============================================================ */
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: 100%;
+  height: 100%;
+}
+
+.app-shell__body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 0;
+}
+
+/* ============================================================
+   Workspace Tabs
+   ============================================================ */
+
+.workspace-tabs {
+  background: rgba(15, 17, 23, 0.95);
+  border-bottom: 1px solid #2a2e3e;
+}
+
+.workspace-tabs__list {
+  display: flex;
+  align-items: center;
+  padding: 0 0.5rem;
+  gap: 2px;
+  -webkit-app-region: drag;
+}
+
+.workspace-tab {
+  -webkit-app-region: no-drag;
+  background: transparent;
+  border: none;
+  color: #9ea4bc;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.workspace-tab:hover {
+  color: #e6e6ec;
+}
+
+.workspace-tab--active {
+  color: #e6e6ec;
+  border-bottom-color: #6c8cff;
+}
+
+.workspace-tabs__add {
+  -webkit-app-region: no-drag;
+  background: transparent;
+  border: none;
+  color: #9ea4bc;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: color 0.15s;
+}
+
+.workspace-tabs__add:hover {
+  color: #e6e6ec;
+}
+
+.workspace-tabs__dialog {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: #191c26;
+  border-bottom: 1px solid #2a2e3e;
+}
+
+.workspace-tabs__input {
+  background: #101014;
+  border: 1px solid #2a2e3e;
+  color: #e6e6ec;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+.workspace-tabs__input:focus {
+  outline: none;
+  border-color: #6c8cff;
+}
+
+.workspace-tabs__btn {
+  background: #6c8cff;
+  border: none;
+  color: #101014;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.workspace-tabs__btn--cancel {
+  background: transparent;
+  color: #9ea4bc;
+  border: 1px solid #2a2e3e;
+}
+
+/* ============================================================
+   Sidebar
+   ============================================================ */
+
+.sidebar {
+  border-right: 1px solid #2a2e3e;
+  background: linear-gradient(180deg, rgba(25, 28, 38, 0.95), rgba(12, 14, 22, 0.95));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar__header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #2a2e3e;
+}
+
+.sidebar__title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.sidebar__section {
+  padding: 0.5rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sidebar__section--assistant {
+  border-top: 1px solid #2a2e3e;
+  flex: 0 0 auto;
+  min-height: 60px;
+}
+
+.sidebar__section-title {
+  margin: 0 0 0.5rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ea4bc;
+}
+
+.sidebar__placeholder {
+  padding: 0.5rem;
+  color: #6b7394;
+  font-size: 0.8rem;
+}
+
+/* ============================================================
+   Terminal List (Sidebar)
+   ============================================================ */
+
+.terminal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.terminal-list__empty {
+  color: #6b7394;
+  font-size: 0.8rem;
+  padding: 0.5rem;
+}
+
+.terminal-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: #e6e6ec;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 0.85rem;
+  transition: background 0.15s;
+}
+
+.terminal-list-item:hover {
+  background: rgba(108, 140, 255, 0.1);
+}
+
+.terminal-list-item--active {
+  background: rgba(108, 140, 255, 0.15);
+}
+
+/* ============================================================
+   Status Dots
+   ============================================================ */
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot--active {
+  background: #4ade80;
+}
+
+.status-dot--idle {
+  background: #ef4444;
+}
+
+.status-dot--exited {
+  background: #6b7394;
+}
+
+/* ============================================================
+   Terminal Tabs
+   ============================================================ */
+
+.terminal-tabs {
+  display: flex;
+  align-items: center;
+  background: rgba(15, 17, 23, 0.7);
+  border-bottom: 1px solid #2a2e3e;
+  min-height: 36px;
+}
+
+.terminal-tabs__list {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  overflow-x: auto;
+  gap: 2px;
+  padding: 0 0.25rem;
+}
+
+.terminal-tabs__list::-webkit-scrollbar {
+  height: 3px;
+}
+
+.terminal-tabs__list::-webkit-scrollbar-thumb {
+  background: #2a2e3e;
+  border-radius: 2px;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #9ea4bc;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  border-radius: 4px 4px 0 0;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.terminal-tab:hover {
+  color: #e6e6ec;
+  background: rgba(108, 140, 255, 0.08);
+}
+
+.terminal-tab--active {
+  color: #e6e6ec;
+  background: rgba(108, 140, 255, 0.12);
+  border-bottom: 2px solid #6c8cff;
+}
+
+.terminal-tab__close {
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.terminal-tab__close:hover {
+  opacity: 1;
+}
+
+.terminal-tabs__add {
+  background: transparent;
+  border: none;
+  color: #9ea4bc;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.terminal-tabs__add:hover {
+  color: #e6e6ec;
+}
+
+/* ============================================================
+   Terminal Area
+   ============================================================ */
+
+.terminal-area {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.terminal-area__views {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.terminal-area__view-wrapper {
+  width: 100%;
+  height: 100%;
+  padding: 0.5rem;
+}
+
+.terminal-view {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #2a2e3e;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.terminal-area__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.terminal-area__empty-btn {
+  background: rgba(108, 140, 255, 0.15);
+  border: 1px solid #6c8cff;
+  color: #e6e6ec;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.15s;
+}
+
+.terminal-area__empty-btn:hover {
+  background: rgba(108, 140, 255, 0.25);
+}
+
+/* ============================================================
+   Status Bar
+   ============================================================ */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 1rem;
+  background: rgba(15, 17, 23, 0.95);
+  border-top: 1px solid #2a2e3e;
+  font-size: 0.75rem;
+  color: #9ea4bc;
+}
+
+.status-bar__item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.status-bar__separator {
+  color: #2a2e3e;
+}
+
+/* ============================================================
+   Utilities
+   ============================================================ */
+
+.error-banner {
+  margin-bottom: 0.75rem;
+  border: 1px solid #7b2d37;
+  border-radius: 8px;
+  padding: 0.5rem;
+  background-color: #39171d;
+  color: #ffb1ba;
+}
+
+.loading {
+  color: #9ea4bc;
+  padding: 1rem;
+}
