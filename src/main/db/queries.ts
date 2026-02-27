@@ -118,6 +118,50 @@ export const listSessions = (db: BetterSqlite3.Database, workspaceId?: string): 
   return db.prepare('SELECT * FROM sessions ORDER BY created_at ASC').all() as SessionRow[];
 };
 
+// --- Event Queries ---
+
+export const insertEvent = (
+  db: BetterSqlite3.Database,
+  sessionId: string,
+  timestamp: number,
+  eventType: string,
+  summary: string,
+  details: string | null,
+): void => {
+  db.prepare(
+    'INSERT INTO session_events (session_id, timestamp, event_type, summary, details) VALUES (?, ?, ?, ?, ?)',
+  ).run(sessionId, timestamp, eventType, summary, details ?? null);
+};
+
+export const listEventsBySession = (
+  db: BetterSqlite3.Database,
+  sessionId: string,
+): Array<{ id: number; session_id: string; timestamp: number; event_type: string; summary: string; details: string | null }> => {
+  return db
+    .prepare('SELECT * FROM session_events WHERE session_id = ? ORDER BY timestamp ASC')
+    .all(sessionId) as Array<{ id: number; session_id: string; timestamp: number; event_type: string; summary: string; details: string | null }>;
+};
+
+export const listRecentEvents = (
+  db: BetterSqlite3.Database,
+  limit: number = 50,
+): Array<{ id: number; session_id: string; timestamp: number; event_type: string; summary: string; details: string | null }> => {
+  return db
+    .prepare('SELECT * FROM session_events ORDER BY timestamp DESC LIMIT ?')
+    .all(limit) as Array<{ id: number; session_id: string; timestamp: number; event_type: string; summary: string; details: string | null }>;
+};
+
+export const getActiveSessionId = (
+  db: BetterSqlite3.Database,
+  terminalId: string,
+): string | null => {
+  const row = db
+    .prepare("SELECT id FROM sessions WHERE terminal_id = ? AND status = 'active' LIMIT 1")
+    .get(terminalId) as { id: string } | undefined;
+
+  return row?.id ?? null;
+};
+
 /**
  * Markiert verwaiste Sessions (ohne ended_at) als 'exited' — Crash-Recovery.
  */

@@ -30,5 +30,20 @@ export const runMigrations = (db: BetterSqlite3.Database): void => {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_status
       ON sessions(status);
+
+    CREATE TABLE IF NOT EXISTS session_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL REFERENCES sessions(id),
+      timestamp INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      details TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_events_session
+      ON session_events(session_id, timestamp);
+
+    CREATE INDEX IF NOT EXISTS idx_events_type
+      ON session_events(event_type);
   `);
 };

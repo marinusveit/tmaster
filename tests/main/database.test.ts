@@ -9,6 +9,10 @@ import {
   endSession,
   markOrphanedSessionsAsExited,
   incrementTerminalIndex,
+  insertEvent,
+  listEventsBySession,
+  listRecentEvents,
+  getActiveSessionId,
 } from '@main/db/queries';
 
 const createTestDb = (): InstanceType<typeof Database> => {
@@ -118,5 +122,74 @@ describe('SQLite Database', () => {
     expect(() =>
       createSession(db, 'sess1', 'term1', 'nonexistent', 'T', 1, null, Date.now()),
     ).toThrow();
+  });
+
+  // --- Event Queries ---
+
+  it('erstellt session_events Tabelle', () => {
+    db = createTestDb();
+
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all() as Array<{ name: string }>;
+
+    expect(tables.map((t) => t.name)).toContain('session_events');
+  });
+
+  it('speichert und listet Events pro Session', () => {
+    db = createTestDb();
+
+    createWorkspace(db, 'ws1', 'Test', '/test', Date.now());
+    createSession(db, 'sess1', 'term1', 'ws1', 'T', 1, null, Date.now());
+
+    insertEvent(db, 'sess1', 1000, 'error', 'Cannot find module', 'Error details...');
+    insertEvent(db, 'sess1', 2000, 'warning', 'Deprecated API', null);
+
+    const events = listEventsBySession(db, 'sess1');
+    expect(events).toHaveLength(2);
+    expect(events[0]?.event_type).toBe('error');
+    expect(events[0]?.summary).toBe('Cannot find module');
+    expect(events[1]?.event_type).toBe('warning');
+    expect(events[1]?.details).toBeNull();
+  });
+
+  it('listet letzte Events ueber alle Sessions', () => {
+    db = createTestDb();
+
+    createWorkspace(db, 'ws1', 'Test', '/test', Date.now());
+    createSession(db, 'sess1', 'term1', 'ws1', 'T', 1, null, Date.now());
+    createSession(db, 'sess2', 'term2', 'ws1', 'T', 2, null, Date.now());
+
+    insertEvent(db, 'sess1', 1000, 'error', 'Error 1', null);
+    insertEvent(db, 'sess2', 2000, 'warning', 'Warning 1', null);
+    insertEvent(db, 'sess1', 3000, 'error', 'Error 2', null);
+
+    const recent = listRecentEvents(db, 2);
+    expect(recent).toHaveLength(2);
+    // Sortiert nach timestamp DESC
+    expect(recent[0]?.summary).toBe('Error 2');
+    expect(recent[1]?.summary).toBe('Warning 1');
+  });
+
+  it('findet aktive Session-ID anhand Terminal-ID', () => {
+    db = createTestDb();
+
+    createWorkspace(db, 'ws1', 'Test', '/test', Date.now());
+    createSession(db, 'sess1', 'term1', 'ws1', 'T', 1, null, Date.now());
+
+    const sessionId = getActiveSessionId(db, 'term1');
+    expect(sessionId).toBe('sess1');
+
+    // Beendete Session wird nicht gefunden
+    endSession(db, 'term1');
+    const noSessionId = getActiveSessionId(db, 'term1');
+    expect(noSessionId).toBeNull();
+  });
+
+  it('gibt null zurueck wenn keine aktive Session existiert', () => {
+    db = createTestDb();
+
+    const sessionId = getActiveSessionId(db, 'nonexistent');
+    expect(sessionId).toBeNull();
   });
 });
