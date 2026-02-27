@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   workspaceSwitch: 'workspace:switch',
   workspaceUpdate: 'workspace:update',
   sessionList: 'session:list',
+  terminalEvent: 'terminal:event',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

@@ -253,4 +253,23 @@ describe('TerminalManager', () => {
     expect(manager.getSessionCount()).toBe(0);
     expect(() => manager.createTerminal({})).toThrow('disposed');
   });
+
+  it('wirft bei Ueberschreitung von MAX_TERMINALS', () => {
+    const manager = new TerminalManager({
+      onData: vi.fn(),
+      onExit: vi.fn(),
+    });
+
+    // 25 Terminals erstellen (MAX_TERMINALS = 25)
+    for (let i = 0; i < 25; i++) {
+      manager.createTerminal({});
+    }
+
+    expect(manager.getSessionCount()).toBe(25);
+
+    // 26. Terminal muss fehlschlagen
+    expect(() => manager.createTerminal({})).toThrow('Terminal limit reached');
+
+    manager.destroyAll();
+  });
 });

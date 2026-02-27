@@ -9,6 +9,8 @@ import { getDatabase, closeDatabase } from './db/database';
 import { runMigrations } from './db/migrations';
 import { registerAppLifecycleHandlers } from './lifecycle/registerAppLifecycleHandlers';
 import { SecretFilter } from './security/secretFilter';
+import { EventExtractor } from './events/eventExtractor';
+import { registerSessionHandlers } from './ipc/registerSessionHandlers';
 import {
   listWorkspaces,
   createWorkspace,
@@ -16,6 +18,8 @@ import {
   createSession,
   endSession,
   getWorkspace,
+  insertEvent,
+  getActiveSessionId,
 } from './db/queries';
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -24,6 +28,7 @@ const secretFilter = new SecretFilter({
   redactionMode: 'replace',
   customPatterns: [],
 });
+const eventExtractor = new EventExtractor();
 
 const broadcast = (channel: string, payload: unknown): void => {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -92,6 +97,16 @@ const bootstrap = async (): Promise<void> => {
         return;
       }
 
+      // Event-Pipeline: Extract -> DB -> broadcast events
+      const events = eventExtractor.extract(event.terminalId, redactedData);
+      for (const extractedEvent of events) {
+        const sessionId = getActiveSessionId(db, event.terminalId);
+        if (sessionId) {
+          insertEvent(db, sessionId, extractedEvent.timestamp, extractedEvent.type, extractedEvent.summary, extractedEvent.details ?? null);
+        }
+        broadcast(IPC_CHANNELS.terminalEvent, extractedEvent);
+      }
+
       broadcast(IPC_CHANNELS.terminalData, { ...event, data: redactedData });
     },
     onExit: (event) => {
@@ -146,6 +161,7 @@ const bootstrap = async (): Promise<void> => {
 
   registerTerminalHandlers(ipcMain, terminalManager);
   registerWorkspaceHandlers(ipcMain, db);
+  registerSessionHandlers(ipcMain, db);
 
   const lifecycleApp = {
     on: (

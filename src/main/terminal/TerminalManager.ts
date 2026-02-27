@@ -12,10 +12,11 @@ import type {
   TerminalSessionInfo,
 } from '../../shared/types/terminal';
 import type { WorkspaceId } from '../../shared/types/workspace';
-import { TERMINAL_LABEL_PREFIX } from '../../shared/constants/defaults';
+import { MAX_TERMINALS, TERMINAL_LABEL_PREFIX } from '../../shared/constants/defaults';
 
 interface TerminalSession {
   pty: IPty;
+  dataDisposable: { dispose: () => void };
   label: TerminalLabel;
   workspaceId: WorkspaceId;
   status: 'active' | 'idle' | 'exited';
@@ -61,6 +62,10 @@ export class TerminalManager {
       throw new Error('TerminalManager has been disposed');
     }
 
+    if (this.sessions.size >= MAX_TERMINALS) {
+      throw new Error(`Terminal limit reached (max ${MAX_TERMINALS})`);
+    }
+
     const terminalId = randomUUID();
     const workspaceId = request.workspaceId ?? TerminalManager.DEFAULT_WORKSPACE_ID;
     const label = this.getNextLabel(workspaceId);
@@ -73,27 +78,45 @@ export class TerminalManager {
       env: this.buildEnvironment(),
     });
 
+    this.buffers.set(terminalId, '');
+
+    // onData-Disposable speichern damit wir den Listener in onExit aufräumen können.
+    // Verhindert, dass node-pty's nativer Read-Thread nach dem Prozess-Exit
+    // in einen stale JS-Callback schreibt (SIGSEGV).
+    const dataDisposable = pty.onData((data) => {
+      if (!this.buffers.has(terminalId)) {
+        return;
+      }
+      const existing = this.buffers.get(terminalId) ?? '';
+      this.buffers.set(terminalId, existing + data);
+    });
+
     const session: TerminalSession = {
       pty,
+      dataDisposable,
       label,
       workspaceId,
       status: 'active',
       createdAt: Date.now(),
     };
     this.sessions.set(terminalId, session);
-    this.buffers.set(terminalId, '');
-
-    pty.onData((data) => {
-      const existing = this.buffers.get(terminalId) ?? '';
-      this.buffers.set(terminalId, existing + data);
-    });
 
     pty.onExit(({ exitCode, signal }) => {
+      // Sofort onData-Listener entfernen bevor weitere Events ankommen
+      dataDisposable.dispose();
+
       const exitedSession = this.sessions.get(terminalId);
       if (exitedSession) {
         exitedSession.status = 'exited';
         this.callbacks.onStatusChange?.(terminalId, 'exited');
       }
+
+      // Restliche Daten im Buffer noch flushen
+      const remainingData = this.buffers.get(terminalId);
+      if (remainingData) {
+        this.callbacks.onData({ terminalId, data: remainingData });
+      }
+
       this.buffers.delete(terminalId);
       this.sessions.delete(terminalId);
       this.callbacks.onExit({ terminalId, exitCode, signal });
@@ -126,6 +149,7 @@ export class TerminalManager {
       return;
     }
 
+    session.dataDisposable.dispose();
     session.pty.kill();
     this.sessions.delete(terminalId);
     this.buffers.delete(terminalId);

@@ -18,6 +18,8 @@ import type {
   UpdateWorkspaceRequest,
   Workspace,
 } from '../shared/types/workspace';
+import type { TerminalEvent } from '../shared/types/event';
+import type { ListSessionsRequest, ListSessionsResponse } from '../shared/types/session';
 
 const api: TmasterApi = {
   createTerminal: (request: CreateTerminalRequest): Promise<CreateTerminalResponse> => {
@@ -59,6 +61,14 @@ const api: TmasterApi = {
     ipcRenderer.on(IPC_CHANNELS.terminalStatus, listener);
     return () => ipcRenderer.off(IPC_CHANNELS.terminalStatus, listener);
   },
+  onTerminalEvent: (handler: (event: TerminalEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: TerminalEvent) => {
+      handler(payload);
+    };
+
+    ipcRenderer.on(IPC_CHANNELS.terminalEvent, listener);
+    return () => ipcRenderer.off(IPC_CHANNELS.terminalEvent, listener);
+  },
   createWorkspace: (request: CreateWorkspaceRequest): Promise<Workspace> => {
     return ipcRenderer.invoke(IPC_CHANNELS.workspaceCreate, request);
   },
@@ -70,6 +80,9 @@ const api: TmasterApi = {
   },
   updateWorkspace: (request: UpdateWorkspaceRequest): Promise<Workspace> => {
     return ipcRenderer.invoke(IPC_CHANNELS.workspaceUpdate, request);
+  },
+  listSessions: (request: ListSessionsRequest): Promise<ListSessionsResponse> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.sessionList, request);
   },
 };
 
