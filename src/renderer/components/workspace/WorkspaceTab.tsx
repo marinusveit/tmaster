@@ -13,6 +13,8 @@ export const WorkspaceTab = ({ workspace, isActive, onSelect }: WorkspaceTabProp
       onClick={onSelect}
       type="button"
       title={workspace.path}
+      role="tab"
+      aria-selected={isActive}
     >
       {workspace.name}
     </button>

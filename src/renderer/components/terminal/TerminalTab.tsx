@@ -13,11 +13,16 @@ export const TerminalTab = ({ label, isActive, onSelect, onClose }: TerminalTabP
     onClose();
   };
 
+  const terminalName = `${label.prefix}${label.index}`;
+
   return (
     <button
       className={`terminal-tab ${isActive ? 'terminal-tab--active' : ''}`}
       onClick={onSelect}
       type="button"
+      role="tab"
+      aria-selected={isActive}
+      aria-label={`Terminal ${terminalName}`}
     >
       <span className="terminal-tab__label">
         {label.prefix}{label.index}
@@ -27,6 +32,7 @@ export const TerminalTab = ({ label, isActive, onSelect, onClose }: TerminalTabP
         onClick={handleClose}
         role="button"
         tabIndex={-1}
+        aria-label="Terminal schliessen"
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             handleClose(e as unknown as React.MouseEvent);

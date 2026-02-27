@@ -18,7 +18,7 @@ export const TerminalTabs = ({
 }: TerminalTabsProps): JSX.Element => {
   return (
     <div className="terminal-tabs">
-      <div className="terminal-tabs__list">
+      <div className="terminal-tabs__list" role="tablist" aria-label="Terminal-Tabs">
         {terminals.map((terminal) => (
           <TerminalTab
             key={terminal.terminalId}
@@ -34,6 +34,7 @@ export const TerminalTabs = ({
         onClick={onCreate}
         type="button"
         title="Neues Terminal (Ctrl+Shift+T)"
+        aria-label="Neues Terminal erstellen"
       >
         +
       </button>
