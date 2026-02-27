@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
+import type { SplitMode } from '@renderer/stores/terminalStore';
 import type { TerminalSessionInfo } from '@shared/types/terminal';
 
 const makeTerminal = (overrides: Partial<TerminalSessionInfo> = {}): TerminalSessionInfo => ({
@@ -16,6 +17,7 @@ describe('terminalStore', () => {
     useTerminalStore.setState({
       terminals: new Map(),
       activeTerminalId: null,
+      splitMode: 'single' as SplitMode,
     });
   });
 
@@ -69,5 +71,33 @@ describe('terminalStore', () => {
 
     store.updateStatus('t1', 'exited');
     expect(useTerminalStore.getState().terminals.get('t1')?.status).toBe('exited');
+  });
+
+  it('durchlaeuft Split-Modi zyklisch', () => {
+    const store = useTerminalStore.getState();
+
+    expect(useTerminalStore.getState().splitMode).toBe('single');
+
+    store.cycleSplitMode();
+    expect(useTerminalStore.getState().splitMode).toBe('horizontal');
+
+    store.cycleSplitMode();
+    expect(useTerminalStore.getState().splitMode).toBe('vertical');
+
+    store.cycleSplitMode();
+    expect(useTerminalStore.getState().splitMode).toBe('grid');
+
+    store.cycleSplitMode();
+    expect(useTerminalStore.getState().splitMode).toBe('single');
+  });
+
+  it('setzt Split-Mode direkt', () => {
+    const store = useTerminalStore.getState();
+
+    store.setSplitMode('grid');
+    expect(useTerminalStore.getState().splitMode).toBe('grid');
+
+    store.setSplitMode('vertical');
+    expect(useTerminalStore.getState().splitMode).toBe('vertical');
   });
 });

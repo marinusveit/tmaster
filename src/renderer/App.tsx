@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 import { useTerminals } from '@renderer/hooks/useTerminals';
 import { useWorkspaces } from '@renderer/hooks/useWorkspaces';
 import { useKeyboardShortcuts } from '@renderer/hooks/useKeyboardShortcuts';
@@ -7,6 +7,9 @@ import { TerminalTabs } from '@renderer/components/terminal/TerminalTabs';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
 import { WorkspaceTabs } from '@renderer/components/workspace/WorkspaceTabs';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
+import { useTerminalStore } from '@renderer/stores/terminalStore';
+import type { SplitMode } from '@renderer/stores/terminalStore';
+import type { TerminalSessionInfo } from '@shared/types/terminal';
 
 export const App = (): JSX.Element => {
   const {
@@ -32,8 +35,34 @@ export const App = (): JSX.Element => {
     ? getTerminalsByWorkspace(activeWorkspaceId)
     : getOrderedTerminals();
   const allTerminals = getOrderedTerminals();
+  const splitMode = useTerminalStore((s) => s.splitMode);
+  const cycleSplitMode = useTerminalStore((s) => s.cycleSplitMode);
   const activeWorkspaceTerminal = workspaceTerminals.find((terminal) => terminal.terminalId === activeTerminalId) ?? null;
-  const visibleTerminal = activeWorkspaceTerminal ?? workspaceTerminals[0] ?? null;
+
+  const visibleTerminals: TerminalSessionInfo[] = useMemo(() => {
+    const slotCounts: Record<SplitMode, number> = {
+      single: 1,
+      horizontal: 2,
+      vertical: 2,
+      grid: 4,
+    };
+    const slots = slotCounts[splitMode];
+
+    // Aktives Terminal zuerst, dann weitere aus dem Workspace
+    const result: TerminalSessionInfo[] = [];
+    if (activeWorkspaceTerminal) {
+      result.push(activeWorkspaceTerminal);
+    }
+    for (const t of workspaceTerminals) {
+      if (result.length >= slots) {
+        break;
+      }
+      if (!result.some((r) => r.terminalId === t.terminalId)) {
+        result.push(t);
+      }
+    }
+    return result;
+  }, [splitMode, activeWorkspaceTerminal, workspaceTerminals]);
 
   // Terminals laden wenn Workspace verfügbar
   useEffect(() => {
@@ -108,6 +137,7 @@ export const App = (): JSX.Element => {
     onCloseTerminal: handleCloseActiveTerminal,
     onSwitchTerminal: switchTerminal,
     onNextWorkspace: handleNextWorkspace,
+    onToggleSplit: cycleSplitMode,
     terminals: workspaceTerminals,
     workspaces: orderedWorkspaces,
     activeWorkspaceId,
@@ -135,17 +165,21 @@ export const App = (): JSX.Element => {
             onClose={handleCloseTerminal}
             onCreate={handleCreateTerminal}
           />
-          <div className="terminal-area__views">
-            {visibleTerminal && (
+          <div className={`terminal-area__views terminal-area__views--${splitMode}`}>
+            {visibleTerminals.map((terminal) => (
               <div
-                key={visibleTerminal.terminalId}
+                key={terminal.terminalId}
                 className="terminal-area__view-wrapper"
               >
-                <TerminalView terminalId={visibleTerminal.terminalId} />
+                <TerminalView terminalId={terminal.terminalId} />
               </div>
-            )}
+            ))}
             {workspaceTerminals.length === 0 && (
               <div className="terminal-area__empty">
+                <div className="terminal-area__empty-icon">&gt;_</div>
+                <span className="terminal-area__empty-message">
+                  {activeWorkspace?.name ?? 'Workspace'} ist bereit
+                </span>
                 <button
                   className="terminal-area__empty-btn"
                   onClick={handleCreateTerminal}
@@ -153,6 +187,9 @@ export const App = (): JSX.Element => {
                 >
                   Neues Terminal erstellen
                 </button>
+                <span className="terminal-area__empty-hint">
+                  <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd>
+                </span>
               </div>
             )}
           </div>

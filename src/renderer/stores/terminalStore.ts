@@ -2,9 +2,14 @@ import { create } from 'zustand';
 import type { TerminalId, TerminalSessionInfo, TerminalStatus } from '@shared/types/terminal';
 import type { WorkspaceId } from '@shared/types/workspace';
 
+export type SplitMode = 'single' | 'horizontal' | 'vertical' | 'grid';
+
+const SPLIT_MODE_CYCLE: SplitMode[] = ['single', 'horizontal', 'vertical', 'grid'];
+
 interface TerminalStoreState {
   terminals: Map<TerminalId, TerminalSessionInfo>;
   activeTerminalId: TerminalId | null;
+  splitMode: SplitMode;
 }
 
 interface TerminalStoreActions {
@@ -15,6 +20,8 @@ interface TerminalStoreActions {
   getOrderedTerminals: () => TerminalSessionInfo[];
   getTerminalsByWorkspace: (workspaceId: WorkspaceId) => TerminalSessionInfo[];
   setTerminals: (terminals: TerminalSessionInfo[]) => void;
+  setSplitMode: (mode: SplitMode) => void;
+  cycleSplitMode: () => void;
 }
 
 export type TerminalStore = TerminalStoreState & TerminalStoreActions;
@@ -22,6 +29,7 @@ export type TerminalStore = TerminalStoreState & TerminalStoreActions;
 export const useTerminalStore = create<TerminalStore>((set, get) => ({
   terminals: new Map(),
   activeTerminalId: null,
+  splitMode: 'single' as SplitMode,
 
   addTerminal: (terminal) => {
     set((state) => {
@@ -78,5 +86,17 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       map.set(t.terminalId, t);
     }
     set({ terminals: map });
+  },
+
+  setSplitMode: (mode) => {
+    set({ splitMode: mode });
+  },
+
+  cycleSplitMode: () => {
+    set((state) => {
+      const currentIndex = SPLIT_MODE_CYCLE.indexOf(state.splitMode);
+      const nextMode = SPLIT_MODE_CYCLE[(currentIndex + 1) % SPLIT_MODE_CYCLE.length] ?? 'single';
+      return { splitMode: nextMode };
+    });
   },
 }));

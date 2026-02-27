@@ -1,5 +1,6 @@
 import type { TerminalId, TerminalSessionInfo } from '@shared/types/terminal';
 import { TerminalList } from './TerminalList';
+import { AssistantPanel } from './AssistantPanel';
 
 interface SidebarProps {
   terminals: TerminalSessionInfo[];
@@ -23,7 +24,7 @@ export const Sidebar = ({ terminals, activeTerminalId, onSelectTerminal }: Sideb
       </div>
       <div className="sidebar__section sidebar__section--assistant">
         <h2 className="sidebar__section-title">Assistant</h2>
-        <div className="sidebar__placeholder">Phase 3</div>
+        <AssistantPanel />
       </div>
     </aside>
   );
