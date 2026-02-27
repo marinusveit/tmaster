@@ -13,6 +13,16 @@ import {
   listEventsBySession,
   listRecentEvents,
   getActiveSessionId,
+  listEventsByType,
+  listRecentEventsByWorkspace,
+  upsertFileLock,
+  removeFileLock,
+  removeAllFileLocksForTerminal,
+  getFileLocksForWorkspace,
+  getConflictingFiles,
+  insertNotification,
+  markNotificationRead,
+  listUnreadNotifications,
 } from '@main/db/queries';
 
 const createTestDb = (): InstanceType<typeof Database> => {
@@ -191,5 +201,91 @@ describe('SQLite Database', () => {
 
     const sessionId = getActiveSessionId(db, 'nonexistent');
     expect(sessionId).toBeNull();
+  });
+
+  it('filtert Events nach Typ', () => {
+    db = createTestDb();
+    createWorkspace(db, 'ws1', 'Test', '/test', Date.now());
+    createSession(db, 'sess1', 'term1', 'ws1', 'T', 1, null, Date.now());
+
+    insertEvent(db, 'sess1', 1000, 'error', 'Error A', null);
+    insertEvent(db, 'sess1', 2000, 'warning', 'Warn B', null);
+    insertEvent(db, 'sess1', 3000, 'error', 'Error C', null);
+
+    const errors = listEventsByType(db, 'error', 10);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.summary).toBe('Error C');
+    expect(errors[1]?.summary).toBe('Error A');
+  });
+
+  it('listet Events pro Workspace seit Timestamp', () => {
+    db = createTestDb();
+    createWorkspace(db, 'ws1', 'A', '/a', Date.now());
+    createWorkspace(db, 'ws2', 'B', '/b', Date.now());
+    createSession(db, 's1', 't1', 'ws1', 'T', 1, null, Date.now());
+    createSession(db, 's2', 't2', 'ws2', 'T', 1, null, Date.now());
+
+    insertEvent(db, 's1', 1000, 'error', 'ws1 old', null);
+    insertEvent(db, 's1', 2000, 'error', 'ws1 new', null);
+    insertEvent(db, 's2', 3000, 'error', 'ws2 new', null);
+
+    const rows = listRecentEventsByWorkspace(db, 'ws1', 1500, 10);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.summary).toBe('ws1 new');
+    expect(rows[0]?.workspace_id).toBe('ws1');
+  });
+
+  it('verwaltet File-Locks und Konflikte', () => {
+    db = createTestDb();
+    upsertFileLock(db, 'src/a.ts', 't1', 'ws1', 1000);
+    upsertFileLock(db, 'src/a.ts', 't2', 'ws1', 1100);
+    upsertFileLock(db, 'src/b.ts', 't1', 'ws1', 1200);
+
+    const locks = getFileLocksForWorkspace(db, 'ws1');
+    expect(locks).toHaveLength(3);
+
+    const conflicts = getConflictingFiles(db, 'ws1');
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.file_path).toBe('src/a.ts');
+
+    removeFileLock(db, 'src/a.ts', 't2');
+    expect(getConflictingFiles(db, 'ws1')).toHaveLength(0);
+
+    removeAllFileLocksForTerminal(db, 't1');
+    expect(getFileLocksForWorkspace(db, 'ws1')).toHaveLength(0);
+  });
+
+  it('speichert und liest Notifications', () => {
+    db = createTestDb();
+
+    insertNotification(db, {
+      id: 'n1',
+      title: 'Error',
+      body: 'Build failed',
+      level: 'error',
+      terminal_id: 't1',
+      workspace_id: 'ws1',
+      timestamp: 1234,
+      is_read: 0,
+    });
+    insertNotification(db, {
+      id: 'n2',
+      title: 'Info',
+      body: 'Server started',
+      level: 'success',
+      terminal_id: 't2',
+      workspace_id: 'ws1',
+      timestamp: 2345,
+      is_read: 0,
+    });
+
+    const unread = listUnreadNotifications(db, 10);
+    expect(unread).toHaveLength(2);
+    expect(unread[0]?.id).toBe('n2');
+
+    markNotificationRead(db, 'n2');
+    const unreadAfter = listUnreadNotifications(db, 10);
+    expect(unreadAfter).toHaveLength(1);
+    expect(unreadAfter[0]?.id).toBe('n1');
   });
 });

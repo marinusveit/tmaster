@@ -21,6 +21,7 @@ interface TerminalSession {
   workspaceId: WorkspaceId;
   status: 'active' | 'idle' | 'exited';
   createdAt: number;
+  lastActivity: number;
 }
 
 interface TerminalManagerCallbacks {
@@ -89,6 +90,10 @@ export class TerminalManager {
       }
       const existing = this.buffers.get(terminalId) ?? '';
       this.buffers.set(terminalId, existing + data);
+      const currentSession = this.sessions.get(terminalId);
+      if (currentSession) {
+        currentSession.lastActivity = Date.now();
+      }
     });
 
     const session: TerminalSession = {
@@ -98,6 +103,7 @@ export class TerminalManager {
       workspaceId,
       status: 'active',
       createdAt: Date.now(),
+      lastActivity: Date.now(),
     };
     this.sessions.set(terminalId, session);
 
@@ -131,6 +137,7 @@ export class TerminalManager {
       return;
     }
 
+    session.lastActivity = Date.now();
     session.pty.write(data);
   }
 
@@ -167,6 +174,38 @@ export class TerminalManager {
 
   public getTerminalsByWorkspace(workspaceId: WorkspaceId): TerminalSessionInfo[] {
     return this.listTerminals().filter((t) => t.workspaceId === workspaceId);
+  }
+
+  public getSessions(): Map<TerminalId, TerminalSessionInfo & { lastActivity: number }> {
+    const terminalSessions = new Map<TerminalId, TerminalSessionInfo & { lastActivity: number }>();
+    for (const [terminalId, session] of this.sessions) {
+      terminalSessions.set(terminalId, {
+        terminalId,
+        label: session.label,
+        workspaceId: session.workspaceId,
+        status: session.status,
+        createdAt: session.createdAt,
+        lastActivity: session.lastActivity,
+      });
+    }
+
+    return terminalSessions;
+  }
+
+  public getSession(terminalId: TerminalId): (TerminalSessionInfo & { lastActivity: number }) | null {
+    const session = this.sessions.get(terminalId);
+    if (!session) {
+      return null;
+    }
+
+    return {
+      terminalId,
+      label: session.label,
+      workspaceId: session.workspaceId,
+      status: session.status,
+      createdAt: session.createdAt,
+      lastActivity: session.lastActivity,
+    };
   }
 
   public getSessionCount(): number {

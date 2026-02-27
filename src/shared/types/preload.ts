@@ -17,6 +17,9 @@ import type {
 } from './workspace';
 import type { TerminalEvent } from './event';
 import type { ListSessionsRequest, ListSessionsResponse } from './session';
+import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from './broker';
+import type { AssistantMessage, RichSuggestion } from './assistant';
+import type { AppNotification } from './notification';
 
 export interface TmasterApi {
   createTerminal: (request: CreateTerminalRequest) => Promise<CreateTerminalResponse>;
@@ -33,4 +36,12 @@ export interface TmasterApi {
   switchWorkspace: (workspaceId: string) => Promise<void>;
   updateWorkspace: (request: UpdateWorkspaceRequest) => Promise<Workspace>;
   listSessions: (request: ListSessionsRequest) => Promise<ListSessionsResponse>;
+  getContext: (query: ContextQuery) => Promise<ContextResult>;
+  onConflict: (handler: (conflict: FileConflict) => void) => () => void;
+  onFileChange: (handler: (event: FileChangeEvent) => void) => () => void;
+  sendAssistantMessage: (content: string) => Promise<void>;
+  onAssistantMessage: (handler: (message: AssistantMessage) => void) => () => void;
+  onSuggestion: (handler: (suggestion: RichSuggestion) => void) => () => void;
+  onNotification: (handler: (notification: AppNotification) => void) => () => void;
+  dismissNotification: (id: string) => Promise<void>;
 }

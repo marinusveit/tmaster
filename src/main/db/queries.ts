@@ -75,6 +75,38 @@ interface SessionRow {
   shell: string | null;
 }
 
+export interface EventRow {
+  id: number;
+  session_id: string;
+  timestamp: number;
+  event_type: string;
+  summary: string;
+  details: string | null;
+}
+
+export interface WorkspaceEventRow extends EventRow {
+  workspace_id: string;
+  terminal_id: string;
+}
+
+export interface FileLockRow {
+  file_path: string;
+  terminal_id: string;
+  workspace_id: string;
+  locked_at: number;
+}
+
+export interface NotificationRow {
+  id: string;
+  title: string;
+  body: string;
+  level: string;
+  terminal_id: string | null;
+  workspace_id: string | null;
+  timestamp: number;
+  is_read: number;
+}
+
 export const createSession = (
   db: BetterSqlite3.Database,
   id: string,
@@ -136,19 +168,57 @@ export const insertEvent = (
 export const listEventsBySession = (
   db: BetterSqlite3.Database,
   sessionId: string,
-): Array<{ id: number; session_id: string; timestamp: number; event_type: string; summary: string; details: string | null }> => {
+): EventRow[] => {
   return db
     .prepare('SELECT * FROM session_events WHERE session_id = ? ORDER BY timestamp ASC')
-    .all(sessionId) as Array<{ id: number; session_id: string; timestamp: number; event_type: string; summary: string; details: string | null }>;
+    .all(sessionId) as EventRow[];
 };
 
 export const listRecentEvents = (
   db: BetterSqlite3.Database,
   limit: number = 50,
-): Array<{ id: number; session_id: string; timestamp: number; event_type: string; summary: string; details: string | null }> => {
+): EventRow[] => {
   return db
     .prepare('SELECT * FROM session_events ORDER BY timestamp DESC LIMIT ?')
-    .all(limit) as Array<{ id: number; session_id: string; timestamp: number; event_type: string; summary: string; details: string | null }>;
+    .all(limit) as EventRow[];
+};
+
+export const listEventsByType = (
+  db: BetterSqlite3.Database,
+  eventType: string,
+  limit: number,
+): EventRow[] => {
+  return db
+    .prepare(
+      'SELECT * FROM session_events WHERE event_type = ? ORDER BY timestamp DESC LIMIT ?',
+    )
+    .all(eventType, limit) as EventRow[];
+};
+
+export const listRecentEventsByWorkspace = (
+  db: BetterSqlite3.Database,
+  workspaceId: string,
+  since: number,
+  limit: number,
+): WorkspaceEventRow[] => {
+  return db
+    .prepare(
+      `SELECT
+        e.id,
+        e.session_id,
+        e.timestamp,
+        e.event_type,
+        e.summary,
+        e.details,
+        s.workspace_id,
+        s.terminal_id
+      FROM session_events e
+      JOIN sessions s ON s.id = e.session_id
+      WHERE s.workspace_id = ? AND e.timestamp >= ?
+      ORDER BY e.timestamp DESC
+      LIMIT ?`,
+    )
+    .all(workspaceId, since, limit) as WorkspaceEventRow[];
 };
 
 export const getActiveSessionId = (
@@ -160,6 +230,110 @@ export const getActiveSessionId = (
     .get(terminalId) as { id: string } | undefined;
 
   return row?.id ?? null;
+};
+
+export const upsertFileLock = (
+  db: BetterSqlite3.Database,
+  filePath: string,
+  terminalId: string,
+  workspaceId: string,
+  timestamp: number,
+): void => {
+  db.prepare(
+    `INSERT OR REPLACE INTO file_locks (file_path, terminal_id, workspace_id, locked_at)
+     VALUES (?, ?, ?, ?)`,
+  ).run(filePath, terminalId, workspaceId, timestamp);
+};
+
+export const removeFileLock = (
+  db: BetterSqlite3.Database,
+  filePath: string,
+  terminalId: string,
+): void => {
+  db.prepare('DELETE FROM file_locks WHERE file_path = ? AND terminal_id = ?').run(
+    filePath,
+    terminalId,
+  );
+};
+
+export const removeAllFileLocksForTerminal = (
+  db: BetterSqlite3.Database,
+  terminalId: string,
+): void => {
+  db.prepare('DELETE FROM file_locks WHERE terminal_id = ?').run(terminalId);
+};
+
+export const getFileLocksForWorkspace = (
+  db: BetterSqlite3.Database,
+  workspaceId: string,
+): FileLockRow[] => {
+  return db
+    .prepare(
+      'SELECT * FROM file_locks WHERE workspace_id = ? ORDER BY locked_at DESC, file_path ASC',
+    )
+    .all(workspaceId) as FileLockRow[];
+};
+
+export interface ConflictingFileRow {
+  file_path: string;
+  terminal_ids: string;
+  lock_count: number;
+}
+
+export const getConflictingFiles = (
+  db: BetterSqlite3.Database,
+  workspaceId: string,
+): ConflictingFileRow[] => {
+  return db
+    .prepare(
+      `SELECT
+        file_path,
+        GROUP_CONCAT(terminal_id, ',') AS terminal_ids,
+        COUNT(DISTINCT terminal_id) AS lock_count
+      FROM file_locks
+      WHERE workspace_id = ?
+      GROUP BY file_path
+      HAVING COUNT(DISTINCT terminal_id) > 1`,
+    )
+    .all(workspaceId) as ConflictingFileRow[];
+};
+
+export const insertNotification = (
+  db: BetterSqlite3.Database,
+  notification: NotificationRow,
+): void => {
+  db.prepare(
+    `INSERT INTO notifications (
+      id, title, body, level, terminal_id, workspace_id, timestamp, is_read
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    notification.id,
+    notification.title,
+    notification.body,
+    notification.level,
+    notification.terminal_id,
+    notification.workspace_id,
+    notification.timestamp,
+    notification.is_read,
+  );
+};
+
+export const markNotificationRead = (db: BetterSqlite3.Database, id: string): void => {
+  db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ?').run(id);
+};
+
+export const listUnreadNotifications = (
+  db: BetterSqlite3.Database,
+  limit: number,
+): NotificationRow[] => {
+  return db
+    .prepare(
+      `SELECT * FROM notifications
+       WHERE is_read = 0
+       ORDER BY timestamp DESC
+       LIMIT ?`,
+    )
+    .all(limit) as NotificationRow[];
 };
 
 /**

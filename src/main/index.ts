@@ -11,6 +11,13 @@ import { registerAppLifecycleHandlers } from './lifecycle/registerAppLifecycleHa
 import { SecretFilter } from './security/secretFilter';
 import { EventExtractor } from './events/eventExtractor';
 import { registerSessionHandlers } from './ipc/registerSessionHandlers';
+import { ContextBroker } from './broker/ContextBroker';
+import { registerBrokerHandlers } from './ipc/registerBrokerHandlers';
+import { FileWatcher } from './broker/FileWatcher';
+import { RecommendationEngine, type TerminalState } from './assistant/RecommendationEngine';
+import { registerAssistantHandlers } from './ipc/registerAssistantHandlers';
+import { NotificationManager } from './notifications/NotificationManager';
+import { registerNotificationHandlers } from './ipc/registerNotificationHandlers';
 import {
   listWorkspaces,
   createWorkspace,
@@ -24,6 +31,8 @@ import {
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 let terminalManager: TerminalManager | null = null;
+let recommendationEngine: RecommendationEngine | null = null;
+let fileWatcher: FileWatcher | null = null;
 const secretFilter = new SecretFilter({
   redactionMode: 'replace',
   customPatterns: [],
@@ -90,6 +99,46 @@ const bootstrap = async (): Promise<void> => {
     defaultWorkspaceId = existingWorkspaces[0]?.id ?? randomUUID();
   }
 
+  const contextBroker = new ContextBroker(db);
+  const notificationManager = new NotificationManager(
+    db,
+    broadcast,
+    () => BrowserWindow.getFocusedWindow() !== null,
+    () => {
+      const focusedWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      focusedWindow?.focus();
+    },
+  );
+
+  const terminalStateReader = (): Map<string, TerminalState> => {
+    const sessions = terminalManager?.getSessions() ?? new Map();
+    const states = new Map<string, TerminalState>();
+    for (const [terminalId, session] of sessions) {
+      states.set(terminalId, {
+        terminalId,
+        status: session.status,
+        lastActivity: session.lastActivity,
+        workspaceId: session.workspaceId,
+      });
+    }
+
+    return states;
+  };
+
+  recommendationEngine = new RecommendationEngine(db, terminalStateReader, (suggestion) => {
+    broadcast(IPC_CHANNELS.assistantSuggestion, suggestion);
+  });
+
+  fileWatcher = new FileWatcher(
+    db,
+    (conflict) => {
+      broadcast(IPC_CHANNELS.brokerConflict, conflict);
+    },
+    (fileChangeEvent) => {
+      broadcast(IPC_CHANNELS.brokerFileChange, fileChangeEvent);
+    },
+  );
+
   terminalManager = new TerminalManager({
     onData: (event) => {
       const redactedData = secretFilter.redact(event.data);
@@ -104,6 +153,9 @@ const bootstrap = async (): Promise<void> => {
         if (sessionId) {
           insertEvent(db, sessionId, extractedEvent.timestamp, extractedEvent.type, extractedEvent.summary, extractedEvent.details ?? null);
         }
+        contextBroker.onEvent(extractedEvent);
+        recommendationEngine?.onEvent(extractedEvent);
+        notificationManager.onTerminalEvent(extractedEvent);
         broadcast(IPC_CHANNELS.terminalEvent, extractedEvent);
       }
 
@@ -112,6 +164,8 @@ const bootstrap = async (): Promise<void> => {
     onExit: (event) => {
       // Session in DB beenden
       endSession(db, event.terminalId);
+      fileWatcher?.releaseTerminalLocks(event.terminalId);
+      notificationManager.onTerminalExit(event.terminalId, event.exitCode ?? -1);
       broadcast(IPC_CHANNELS.terminalExit, event);
     },
     onStatusChange: (terminalId, status) => {
@@ -162,6 +216,20 @@ const bootstrap = async (): Promise<void> => {
   registerTerminalHandlers(ipcMain, terminalManager);
   registerWorkspaceHandlers(ipcMain, db);
   registerSessionHandlers(ipcMain, db);
+  registerBrokerHandlers(ipcMain, contextBroker);
+  registerAssistantHandlers(ipcMain, {
+    contextBroker,
+    onAssistantMessage: (message) => {
+      broadcast(IPC_CHANNELS.assistantMessage, message);
+    },
+  });
+  registerNotificationHandlers(ipcMain, notificationManager);
+
+  recommendationEngine.start();
+
+  for (const workspace of listWorkspaces(db)) {
+    fileWatcher.watch(workspace.id, workspace.path);
+  }
 
   const lifecycleApp = {
     on: (
@@ -198,6 +266,10 @@ const bootstrap = async (): Promise<void> => {
     createMainWindow,
     destroyAllTerminals,
     closeDatabase: () => {
+      recommendationEngine?.dispose();
+      recommendationEngine = null;
+      fileWatcher?.unwatchAll();
+      fileWatcher = null;
       terminalManager?.dispose();
       terminalManager = null;
       closeDatabase();

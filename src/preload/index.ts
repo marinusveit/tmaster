@@ -20,6 +20,9 @@ import type {
 } from '../shared/types/workspace';
 import type { TerminalEvent } from '../shared/types/event';
 import type { ListSessionsRequest, ListSessionsResponse } from '../shared/types/session';
+import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from '../shared/types/broker';
+import type { AssistantMessage, RichSuggestion } from '../shared/types/assistant';
+import type { AppNotification } from '../shared/types/notification';
 
 const api: TmasterApi = {
   createTerminal: (request: CreateTerminalRequest): Promise<CreateTerminalResponse> => {
@@ -83,6 +86,55 @@ const api: TmasterApi = {
   },
   listSessions: (request: ListSessionsRequest): Promise<ListSessionsResponse> => {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionList, request);
+  },
+  getContext: (query: ContextQuery): Promise<ContextResult> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.brokerGetContext, query);
+  },
+  onConflict: (handler: (conflict: FileConflict) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: FileConflict) => {
+      handler(payload);
+    };
+
+    ipcRenderer.on(IPC_CHANNELS.brokerConflict, listener);
+    return () => ipcRenderer.off(IPC_CHANNELS.brokerConflict, listener);
+  },
+  onFileChange: (handler: (event: FileChangeEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: FileChangeEvent) => {
+      handler(payload);
+    };
+
+    ipcRenderer.on(IPC_CHANNELS.brokerFileChange, listener);
+    return () => ipcRenderer.off(IPC_CHANNELS.brokerFileChange, listener);
+  },
+  sendAssistantMessage: (content: string): Promise<void> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.assistantSend, content);
+  },
+  onAssistantMessage: (handler: (message: AssistantMessage) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: AssistantMessage) => {
+      handler(payload);
+    };
+
+    ipcRenderer.on(IPC_CHANNELS.assistantMessage, listener);
+    return () => ipcRenderer.off(IPC_CHANNELS.assistantMessage, listener);
+  },
+  onSuggestion: (handler: (suggestion: RichSuggestion) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: RichSuggestion) => {
+      handler(payload);
+    };
+
+    ipcRenderer.on(IPC_CHANNELS.assistantSuggestion, listener);
+    return () => ipcRenderer.off(IPC_CHANNELS.assistantSuggestion, listener);
+  },
+  onNotification: (handler: (notification: AppNotification) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: AppNotification) => {
+      handler(payload);
+    };
+
+    ipcRenderer.on(IPC_CHANNELS.notificationShow, listener);
+    return () => ipcRenderer.off(IPC_CHANNELS.notificationShow, listener);
+  },
+  dismissNotification: (id: string): Promise<void> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.notificationDismiss, id);
   },
 };
 

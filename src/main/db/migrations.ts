@@ -45,5 +45,30 @@ export const runMigrations = (db: BetterSqlite3.Database): void => {
 
     CREATE INDEX IF NOT EXISTS idx_events_type
       ON session_events(event_type);
+
+    CREATE TABLE IF NOT EXISTS file_locks (
+      file_path TEXT NOT NULL,
+      terminal_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      locked_at INTEGER NOT NULL,
+      PRIMARY KEY (file_path, terminal_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_file_locks_workspace
+      ON file_locks(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'info',
+      terminal_id TEXT,
+      workspace_id TEXT,
+      timestamp INTEGER NOT NULL,
+      is_read INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notifications_timestamp
+      ON notifications(timestamp);
   `);
 };

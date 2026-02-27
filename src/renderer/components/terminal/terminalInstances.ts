@@ -1,6 +1,5 @@
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { WebglAddon } from '@xterm/addon-webgl';
 import { transport } from '@renderer/transport';
 import type { TerminalId, TerminalDataEvent, TerminalExitEvent } from '@shared/types/terminal';
 
@@ -41,15 +40,16 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
   const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
 
-  try {
-    const webglAddon = new WebglAddon();
-    webglAddon.onContextLoss(() => {
-      webglAddon.dispose();
-    });
-    terminal.loadAddon(webglAddon);
-  } catch {
-    // WebGL ist optional: Terminal bleibt mit Canvas-Renderer funktionsfähig.
-  }
+  // TODO: WebGL temporär deaktiviert zur SIGSEGV-Diagnose
+  // try {
+  //   const webglAddon = new WebglAddon();
+  //   webglAddon.onContextLoss(() => {
+  //     webglAddon.dispose();
+  //   });
+  //   terminal.loadAddon(webglAddon);
+  // } catch {
+  //   // WebGL ist optional: Terminal bleibt mit Canvas-Renderer funktionsfähig.
+  // }
 
   const cleanups: (() => void)[] = [];
 

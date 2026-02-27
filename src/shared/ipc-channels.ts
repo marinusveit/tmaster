@@ -13,6 +13,15 @@ export const IPC_CHANNELS = {
   workspaceUpdate: 'workspace:update',
   sessionList: 'session:list',
   terminalEvent: 'terminal:event',
+  brokerGetContext: 'broker:getContext',
+  brokerGetConflicts: 'broker:getConflicts',
+  brokerConflict: 'broker:conflict',
+  brokerFileChange: 'broker:fileChange',
+  assistantSend: 'assistant:send',
+  assistantMessage: 'assistant:message',
+  assistantSuggestion: 'assistant:suggestion',
+  notificationShow: 'notification:show',
+  notificationDismiss: 'notification:dismiss',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
