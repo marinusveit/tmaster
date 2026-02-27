@@ -32,6 +32,8 @@ export const App = (): JSX.Element => {
     ? getTerminalsByWorkspace(activeWorkspaceId)
     : getOrderedTerminals();
   const allTerminals = getOrderedTerminals();
+  const activeWorkspaceTerminal = workspaceTerminals.find((terminal) => terminal.terminalId === activeTerminalId) ?? null;
+  const visibleTerminal = activeWorkspaceTerminal ?? workspaceTerminals[0] ?? null;
 
   // Terminals laden wenn Workspace verfügbar
   useEffect(() => {
@@ -46,6 +48,24 @@ export const App = (): JSX.Element => {
       void createTerminal({ workspaceId: activeWorkspaceId });
     }
   }, [activeWorkspaceId, workspaceTerminals.length, allTerminals.length, createTerminal]);
+
+  // Sicherstellen, dass immer ein Terminal im aktiven Workspace ausgewählt ist.
+  useEffect(() => {
+    if (!activeTerminalId && workspaceTerminals.length > 0) {
+      const firstTerminal = workspaceTerminals[0];
+      if (firstTerminal) {
+        switchTerminal(firstTerminal.terminalId);
+      }
+      return;
+    }
+
+    if (activeTerminalId && !workspaceTerminals.some((terminal) => terminal.terminalId === activeTerminalId)) {
+      const firstTerminal = workspaceTerminals[0];
+      if (firstTerminal) {
+        switchTerminal(firstTerminal.terminalId);
+      }
+    }
+  }, [activeTerminalId, workspaceTerminals, switchTerminal]);
 
   const handleCreateTerminal = useCallback(() => {
     if (activeWorkspaceId) {
@@ -116,15 +136,14 @@ export const App = (): JSX.Element => {
             onCreate={handleCreateTerminal}
           />
           <div className="terminal-area__views">
-            {workspaceTerminals.map((terminal) => (
+            {visibleTerminal && (
               <div
-                key={terminal.terminalId}
+                key={visibleTerminal.terminalId}
                 className="terminal-area__view-wrapper"
-                style={{ display: terminal.terminalId === activeTerminalId ? 'block' : 'none' }}
               >
-                <TerminalView terminalId={terminal.terminalId} />
+                <TerminalView terminalId={visibleTerminal.terminalId} />
               </div>
-            ))}
+            )}
             {workspaceTerminals.length === 0 && (
               <div className="terminal-area__empty">
                 <button

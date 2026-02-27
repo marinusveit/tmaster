@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { transport } from '@renderer/transport';
+import { destroyTerminalInstance } from '@renderer/components/terminal/terminalInstances';
 import type { CreateTerminalRequest, CreateTerminalResponse, ListTerminalsResponse, TerminalExitEvent, TerminalStatusEvent } from '@shared/types/terminal';
 
 export const useTerminals = () => {
@@ -46,6 +47,7 @@ export const useTerminals = () => {
   }, [addTerminal, setActiveTerminal]);
 
   const closeTerminal = useCallback(async (terminalId: string): Promise<void> => {
+    destroyTerminalInstance(terminalId);
     await transport.invoke<void>('closeTerminal', { terminalId });
     removeTerminal(terminalId);
   }, [removeTerminal]);
