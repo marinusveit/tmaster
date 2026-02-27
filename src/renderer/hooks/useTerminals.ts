@@ -20,7 +20,10 @@ export const useTerminals = () => {
   // Push-Events vom Main Process abonnieren
   useEffect(() => {
     const unsubExit = transport.on<TerminalExitEvent>('onTerminalExit', (event) => {
-      updateStatus(event.terminalId, 'exited');
+      // xterm-Instanz aufräumen und Terminal aus dem Store entfernen.
+      // Der PTY ist bereits beendet, kein IPC-Close nötig.
+      destroyTerminalInstance(event.terminalId);
+      removeTerminal(event.terminalId);
     });
 
     const unsubStatus = transport.on<TerminalStatusEvent>('onTerminalStatus', (event) => {
@@ -31,7 +34,7 @@ export const useTerminals = () => {
       unsubExit();
       unsubStatus();
     };
-  }, [updateStatus]);
+  }, [removeTerminal, updateStatus]);
 
   const createTerminal = useCallback(async (request: CreateTerminalRequest = {}): Promise<CreateTerminalResponse> => {
     const response = await transport.invoke<CreateTerminalResponse>('createTerminal', request);
