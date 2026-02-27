@@ -61,6 +61,16 @@ export const useKeyboardShortcuts = ({
         return;
       }
 
+      // Escape → Assistant schliessen
+      if (e.key === 'Escape') {
+        const assistantState = useAssistantStore.getState();
+        if (assistantState.isExpanded) {
+          e.preventDefault();
+          assistantState.setExpanded(false);
+          return;
+        }
+      }
+
       // Ctrl+1 bis Ctrl+9 → Terminal nach Position
       if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();

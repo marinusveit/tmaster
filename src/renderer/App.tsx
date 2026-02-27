@@ -5,9 +5,11 @@ import { useKeyboardShortcuts } from '@renderer/hooks/useKeyboardShortcuts';
 import { TerminalView } from '@renderer/components/terminal/TerminalView';
 import { TerminalTabs } from '@renderer/components/terminal/TerminalTabs';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
+import { AssistantDrawer } from '@renderer/components/sidebar/AssistantDrawer';
 import { WorkspaceTabs } from '@renderer/components/workspace/WorkspaceTabs';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
+import { useAssistantStore } from '@renderer/stores/assistantStore';
 import type { SplitMode } from '@renderer/stores/terminalStore';
 import type { TerminalSessionInfo } from '@shared/types/terminal';
 
@@ -37,6 +39,7 @@ export const App = (): JSX.Element => {
   const allTerminals = getOrderedTerminals();
   const splitMode = useTerminalStore((s) => s.splitMode);
   const cycleSplitMode = useTerminalStore((s) => s.cycleSplitMode);
+  const isAssistantExpanded = useAssistantStore((s) => s.isExpanded);
   const activeWorkspaceTerminal = workspaceTerminals.find((terminal) => terminal.terminalId === activeTerminalId) ?? null;
 
   const visibleTerminals: TerminalSessionInfo[] = useMemo(() => {
@@ -151,12 +154,13 @@ export const App = (): JSX.Element => {
         onSelect={handleSwitchWorkspace}
         onCreate={handleCreateWorkspace}
       />
-      <div className="app-shell__body">
+      <div className={`app-shell__body${isAssistantExpanded ? ' app-shell__body--assistant-open' : ''}`}>
         <Sidebar
           terminals={workspaceTerminals}
           activeTerminalId={activeTerminalId}
           onSelectTerminal={switchTerminal}
         />
+        {isAssistantExpanded && <AssistantDrawer />}
         <div className="terminal-area">
           <TerminalTabs
             terminals={workspaceTerminals}

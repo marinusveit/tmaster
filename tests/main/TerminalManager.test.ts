@@ -5,6 +5,7 @@ import { TerminalManager } from '@main/terminal/TerminalManager';
 
 interface FakePty extends IPty {
   emitData: (data: string) => void;
+  emitExit: (exitCode: number, signal: number) => void;
 }
 
 const fakePtys: FakePty[] = [];
@@ -14,6 +15,7 @@ vi.mock('node-pty', () => {
     spawn: vi.fn(() => {
       let onDataCallback: ((data: string) => void) | null = null;
       let onExitCallback: ((event: { exitCode: number; signal: number }) => void) | null = null;
+      let dataDisposed = false;
 
       const pty: FakePty = {
         process: 'bash',
@@ -31,7 +33,11 @@ vi.mock('node-pty', () => {
         }),
         onData: (callback) => {
           onDataCallback = callback;
-          return { dispose: vi.fn() };
+          return {
+            dispose: vi.fn(() => {
+              dataDisposed = true;
+            }),
+          };
         },
         onExit: (callback) => {
           onExitCallback = callback;
@@ -39,7 +45,13 @@ vi.mock('node-pty', () => {
         },
         onBinary: vi.fn(),
         emitData: (data: string) => {
-          onDataCallback?.(data);
+          if (!dataDisposed) {
+            onDataCallback?.(data);
+          }
+        },
+        // Natürlicher Prozess-Exit (z.B. `exit` im Terminal)
+        emitExit: (exitCode: number, signal: number) => {
+          onExitCallback?.({ exitCode, signal });
         },
       } as unknown as FakePty;
 
@@ -252,6 +264,42 @@ describe('TerminalManager', () => {
 
     expect(manager.getSessionCount()).toBe(0);
     expect(() => manager.createTerminal({})).toThrow('disposed');
+  });
+
+  it('räumt bei natürlichem Prozess-Exit (exit) korrekt auf', () => {
+    const onData = vi.fn();
+    const onExit = vi.fn();
+    const onStatusChange = vi.fn();
+    const manager = new TerminalManager({
+      onData,
+      onExit,
+      onStatusChange,
+    });
+
+    const { terminalId } = manager.createTerminal({});
+
+    // Etwas Output erzeugen bevor der Prozess endet
+    fakePtys[0]?.emitData('letzte Zeile');
+
+    // Natürlicher Exit (wie bei `exit` im Terminal)
+    fakePtys[0]?.emitExit(0, 0);
+
+    // Session muss aufgeräumt sein
+    expect(manager.getSessionCount()).toBe(0);
+    expect(onExit).toHaveBeenCalledWith({ terminalId, exitCode: 0, signal: 0 });
+    expect(onStatusChange).toHaveBeenCalledWith(terminalId, 'exited');
+
+    // Restliche Buffer-Daten müssen vor dem Exit geflusht worden sein
+    expect(onData).toHaveBeenCalledWith({ terminalId, data: 'letzte Zeile' });
+
+    // Nach Exit darf emitData keinen neuen Buffer erzeugen
+    fakePtys[0]?.emitData('nach exit');
+    vi.advanceTimersByTime(16);
+
+    // Nur der eine onData-Call vom Exit-Flush
+    expect(onData).toHaveBeenCalledTimes(1);
+
+    manager.dispose();
   });
 
   it('wirft bei Ueberschreitung von MAX_TERMINALS', () => {
