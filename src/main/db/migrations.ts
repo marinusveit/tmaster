@@ -1,0 +1,34 @@
+import type BetterSqlite3 from 'better-sqlite3';
+
+/**
+ * Erstellt das Phase-2-Schema idempotent (IF NOT EXISTS).
+ */
+export const runMigrations = (db: BetterSqlite3.Database): void => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      path TEXT NOT NULL,
+      next_terminal_index INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      terminal_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      label_prefix TEXT NOT NULL DEFAULT 'T',
+      label_index INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      shell TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_workspace
+      ON sessions(workspace_id);
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_status
+      ON sessions(status);
+  `);
+};
