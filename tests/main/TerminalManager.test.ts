@@ -219,7 +219,7 @@ describe('TerminalManager', () => {
   });
 
   it('entfernt CLAUDECODE aus der PTY-Umgebung', () => {
-    const { spawn } = vi.mocked(await import('node-pty'));
+    const mockedSpawn = vi.mocked(spawn);
 
     // CLAUDECODE simulieren (z.B. wenn tmaster aus einer Claude Code Session gestartet wird)
     process.env.CLAUDECODE = '1';
@@ -231,7 +231,7 @@ describe('TerminalManager', () => {
 
     manager.createTerminal({});
 
-    const spawnCall = spawn.mock.calls.at(-1);
+    const spawnCall = mockedSpawn.mock.calls.at(-1);
     const env = spawnCall?.[2]?.env as Record<string, string> | undefined;
     expect(env).toBeDefined();
     expect(env).not.toHaveProperty('CLAUDECODE');
