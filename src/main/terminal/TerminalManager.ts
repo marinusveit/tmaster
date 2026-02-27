@@ -33,6 +33,7 @@ export class TerminalManager {
   private readonly buffers = new Map<TerminalId, string>();
   private readonly flushInterval: NodeJS.Timeout;
   private readonly labelCounters = new Map<WorkspaceId, number>();
+  private isDisposed = false;
   private static readonly DEFAULT_WORKSPACE_ID = 'default';
 
   public constructor(private readonly callbacks: TerminalManagerCallbacks) {
@@ -56,6 +57,10 @@ export class TerminalManager {
   }
 
   public createTerminal(request: CreateTerminalRequest): CreateTerminalResponse {
+    if (this.isDisposed) {
+      throw new Error('TerminalManager has been disposed');
+    }
+
     const terminalId = randomUUID();
     const workspaceId = request.workspaceId ?? TerminalManager.DEFAULT_WORKSPACE_ID;
     const label = this.getNextLabel(workspaceId);
@@ -153,7 +158,16 @@ export class TerminalManager {
       this.closeTerminal(terminalId);
     }
 
+  }
+
+  public dispose(): void {
+    if (this.isDisposed) {
+      return;
+    }
+
+    this.destroyAll();
     clearInterval(this.flushInterval);
+    this.isDisposed = true;
   }
 
   private flushBuffers(): void {
@@ -175,8 +189,15 @@ export class TerminalManager {
     return process.env.SHELL ?? '/bin/bash';
   }
 
+  // Env-Variablen die von übergeordneten CLI-Sessions stammen und in Child-PTYs nicht vererbt werden sollen.
+  private static readonly STRIPPED_ENV_VARS = new Set([
+    'CLAUDECODE',
+  ]);
+
   private buildEnvironment(): Record<string, string> {
-    const entries = Object.entries(process.env).filter(([, value]) => typeof value === 'string');
+    const entries = Object.entries(process.env).filter(
+      ([key, value]) => typeof value === 'string' && !TerminalManager.STRIPPED_ENV_VARS.has(key),
+    );
     return Object.fromEntries(entries) as Record<string, string>;
   }
 }

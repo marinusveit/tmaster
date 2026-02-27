@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IPty } from 'node-pty';
+import { spawn } from 'node-pty';
 import { TerminalManager } from '@main/terminal/TerminalManager';
 
 interface FakePty extends IPty {
@@ -200,7 +201,7 @@ describe('TerminalManager', () => {
     manager.destroyAll();
   });
 
-  it('destroyAll räumt alle Sessions und den FlushInterval auf', () => {
+  it('destroyAll räumt alle Sessions auf', () => {
     const manager = new TerminalManager({
       onData: vi.fn(),
       onExit: vi.fn(),
@@ -215,5 +216,41 @@ describe('TerminalManager', () => {
     manager.destroyAll();
 
     expect(manager.getSessionCount()).toBe(0);
+  });
+
+  it('entfernt CLAUDECODE aus der PTY-Umgebung', () => {
+    const { spawn } = vi.mocked(await import('node-pty'));
+
+    // CLAUDECODE simulieren (z.B. wenn tmaster aus einer Claude Code Session gestartet wird)
+    process.env.CLAUDECODE = '1';
+
+    const manager = new TerminalManager({
+      onData: vi.fn(),
+      onExit: vi.fn(),
+    });
+
+    manager.createTerminal({});
+
+    const spawnCall = spawn.mock.calls.at(-1);
+    const env = spawnCall?.[2]?.env as Record<string, string> | undefined;
+    expect(env).toBeDefined();
+    expect(env).not.toHaveProperty('CLAUDECODE');
+
+    // Aufräumen
+    delete process.env.CLAUDECODE;
+    manager.destroyAll();
+  });
+
+  it('dispose beendet den Manager dauerhaft', () => {
+    const manager = new TerminalManager({
+      onData: vi.fn(),
+      onExit: vi.fn(),
+    });
+
+    manager.createTerminal({});
+    manager.dispose();
+
+    expect(manager.getSessionCount()).toBe(0);
+    expect(() => manager.createTerminal({})).toThrow('disposed');
   });
 });

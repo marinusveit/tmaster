@@ -3,7 +3,6 @@ import type { IpcMain } from 'electron';
 import type BetterSqlite3 from 'better-sqlite3';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { Workspace } from '../../shared/types/workspace';
-import type { TerminalManager } from '../terminal/TerminalManager';
 import {
   createWorkspace,
   listWorkspaces,
@@ -33,12 +32,9 @@ const toWorkspace = (row: {
   createdAt: row.created_at,
 });
 
-type WorkspaceSwitchTerminalManager = Pick<TerminalManager, 'listTerminals' | 'closeTerminal'>;
-
 export const registerWorkspaceHandlers = (
   ipcMain: IpcMain,
   db: BetterSqlite3.Database,
-  terminalManager: WorkspaceSwitchTerminalManager,
 ): void => {
   ipcMain.handle(IPC_CHANNELS.workspaceCreate, (_event, payload: unknown) => {
     if (!isObject(payload)) {
@@ -71,15 +67,6 @@ export const registerWorkspaceHandlers = (
     const row = getWorkspace(db, workspaceId);
     if (!row) {
       throw new Error(`Workspace ${workspaceId} not found`);
-    }
-
-    // Alle PTYs außerhalb des Ziel-Workspaces beenden, um Workspace-Isolation sicherzustellen.
-    const terminalsToClose = terminalManager
-      .listTerminals()
-      .filter((terminal) => terminal.workspaceId !== workspaceId);
-
-    for (const terminal of terminalsToClose) {
-      terminalManager.closeTerminal(terminal.terminalId);
     }
   });
 

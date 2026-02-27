@@ -8,6 +8,7 @@ import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers';
 import { getDatabase, closeDatabase } from './db/database';
 import { runMigrations } from './db/migrations';
 import { registerAppLifecycleHandlers } from './lifecycle/registerAppLifecycleHandlers';
+import { SecretFilter } from './security/secretFilter';
 import {
   listWorkspaces,
   createWorkspace,
@@ -19,6 +20,10 @@ import {
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 let terminalManager: TerminalManager | null = null;
+const secretFilter = new SecretFilter({
+  redactionMode: 'replace',
+  customPatterns: [],
+});
 
 const broadcast = (channel: string, payload: unknown): void => {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -82,7 +87,12 @@ const bootstrap = async (): Promise<void> => {
 
   terminalManager = new TerminalManager({
     onData: (event) => {
-      broadcast(IPC_CHANNELS.terminalData, event);
+      const redactedData = secretFilter.redact(event.data);
+      if (!redactedData) {
+        return;
+      }
+
+      broadcast(IPC_CHANNELS.terminalData, { ...event, data: redactedData });
     },
     onExit: (event) => {
       // Session in DB beenden
@@ -135,7 +145,7 @@ const bootstrap = async (): Promise<void> => {
   };
 
   registerTerminalHandlers(ipcMain, terminalManager);
-  registerWorkspaceHandlers(ipcMain, db, terminalManager);
+  registerWorkspaceHandlers(ipcMain, db);
 
   const lifecycleApp = {
     on: (
@@ -172,6 +182,7 @@ const bootstrap = async (): Promise<void> => {
     createMainWindow,
     destroyAllTerminals,
     closeDatabase: () => {
+      terminalManager?.dispose();
       terminalManager = null;
       closeDatabase();
     },

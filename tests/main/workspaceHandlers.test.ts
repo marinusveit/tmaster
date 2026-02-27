@@ -3,7 +3,6 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '@main/db/migrations';
 import { registerWorkspaceHandlers } from '@main/ipc/registerWorkspaceHandlers';
 import { createWorkspace, listWorkspaces } from '@main/db/queries';
-import type { TerminalSessionInfo } from '@shared/types/terminal';
 
 type HandlerFn = (event: unknown, payload: unknown) => unknown;
 
@@ -32,21 +31,6 @@ const createMockIpcMain = () => {
   };
 };
 
-const createTerminalInfo = (terminalId: string, workspaceId: string): TerminalSessionInfo => ({
-  terminalId,
-  label: { prefix: 'T', index: 1 },
-  workspaceId,
-  status: 'active',
-  createdAt: Date.now(),
-});
-
-const createMockTerminalManager = (terminals: TerminalSessionInfo[] = []) => {
-  return {
-    listTerminals: vi.fn(() => terminals),
-    closeTerminal: vi.fn(),
-  };
-};
-
 describe('registerWorkspaceHandlers', () => {
   let db: InstanceType<typeof Database>;
 
@@ -57,8 +41,7 @@ describe('registerWorkspaceHandlers', () => {
   it('erstellt einen Workspace über IPC', () => {
     db = createTestDb();
     const ipcMain = createMockIpcMain();
-    const terminalManager = createMockTerminalManager();
-    registerWorkspaceHandlers(ipcMain as never, db, terminalManager);
+    registerWorkspaceHandlers(ipcMain as never, db);
 
     const result = ipcMain.invoke('workspace:create', { name: 'My Project', path: '/home/user/project' }) as {
       id: string;
@@ -74,8 +57,7 @@ describe('registerWorkspaceHandlers', () => {
   it('listet alle Workspaces', () => {
     db = createTestDb();
     const ipcMain = createMockIpcMain();
-    const terminalManager = createMockTerminalManager();
-    registerWorkspaceHandlers(ipcMain as never, db, terminalManager);
+    registerWorkspaceHandlers(ipcMain as never, db);
 
     createWorkspace(db, 'ws1', 'A', '/a', Date.now());
     createWorkspace(db, 'ws2', 'B', '/b', Date.now());
@@ -90,8 +72,7 @@ describe('registerWorkspaceHandlers', () => {
   it('wirft bei ungültigem Create-Payload', () => {
     db = createTestDb();
     const ipcMain = createMockIpcMain();
-    const terminalManager = createMockTerminalManager();
-    registerWorkspaceHandlers(ipcMain as never, db, terminalManager);
+    registerWorkspaceHandlers(ipcMain as never, db);
 
     expect(() => ipcMain.invoke('workspace:create', { name: 'No Path' })).toThrow(
       'Workspace name and path are required',
@@ -101,8 +82,7 @@ describe('registerWorkspaceHandlers', () => {
   it('updated einen Workspace', () => {
     db = createTestDb();
     const ipcMain = createMockIpcMain();
-    const terminalManager = createMockTerminalManager();
-    registerWorkspaceHandlers(ipcMain as never, db, terminalManager);
+    registerWorkspaceHandlers(ipcMain as never, db);
 
     createWorkspace(db, 'ws1', 'Original', '/orig', Date.now());
 
@@ -119,32 +99,20 @@ describe('registerWorkspaceHandlers', () => {
   it('wirft bei Switch zu nicht-existierendem Workspace', () => {
     db = createTestDb();
     const ipcMain = createMockIpcMain();
-    const terminalManager = createMockTerminalManager();
-    registerWorkspaceHandlers(ipcMain as never, db, terminalManager);
+    registerWorkspaceHandlers(ipcMain as never, db);
 
     expect(() => ipcMain.invoke('workspace:switch', 'nonexistent')).toThrow('not found');
-    expect(terminalManager.closeTerminal).not.toHaveBeenCalled();
   });
 
-  it('beendet alle PTYs außerhalb des Ziel-Workspaces beim Switch', () => {
+  it('beendet beim Workspace-Switch keine laufenden Terminals', () => {
     db = createTestDb();
     const ipcMain = createMockIpcMain();
-    const terminalManager = createMockTerminalManager([
-      createTerminalInfo('t-ws-a', 'ws-a'),
-      createTerminalInfo('t-ws-b', 'ws-b'),
-      createTerminalInfo('t-ws-c', 'ws-c'),
-    ]);
-    registerWorkspaceHandlers(ipcMain as never, db, terminalManager);
+    registerWorkspaceHandlers(ipcMain as never, db);
 
     createWorkspace(db, 'ws-a', 'A', '/a', Date.now());
     createWorkspace(db, 'ws-b', 'B', '/b', Date.now());
     createWorkspace(db, 'ws-c', 'C', '/c', Date.now());
 
-    ipcMain.invoke('workspace:switch', 'ws-b');
-
-    expect(terminalManager.listTerminals).toHaveBeenCalledTimes(1);
-    expect(terminalManager.closeTerminal).toHaveBeenCalledTimes(2);
-    expect(terminalManager.closeTerminal).toHaveBeenNthCalledWith(1, 't-ws-a');
-    expect(terminalManager.closeTerminal).toHaveBeenNthCalledWith(2, 't-ws-c');
+    expect(() => ipcMain.invoke('workspace:switch', 'ws-b')).not.toThrow();
   });
 });
