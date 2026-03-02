@@ -1,10 +1,21 @@
 import { create } from 'zustand';
-import type { AssistantMessage, CoachingLevel, Suggestion } from '@shared/types/assistant';
+import { transport } from '@renderer/transport';
+import { useTerminalStore } from '@renderer/stores/terminalStore';
+import { useWorkspaceStore } from '@renderer/stores/workspaceStore';
+import type {
+  AssistantMessage,
+  CoachingLevel,
+  RichSuggestion,
+  Suggestion,
+  SuggestionAction,
+  SuggestionPriority,
+} from '@shared/types/assistant';
 
 interface AssistantStoreState {
   isExpanded: boolean;
   messages: AssistantMessage[];
   suggestions: Suggestion[];
+  richSuggestions: RichSuggestion[];
   coachingLevel: CoachingLevel;
   isTyping: boolean;
 }
@@ -18,40 +29,54 @@ interface AssistantStoreActions {
   setSuggestions: (suggestions: Suggestion[]) => void;
   removeSuggestion: (id: string) => void;
   setCoachingLevel: (level: CoachingLevel) => void;
+  addRichSuggestion: (suggestion: RichSuggestion) => void;
+  removeRichSuggestion: (id: string) => void;
+  executeSuggestionAction: (suggestionId: string, action: SuggestionAction) => Promise<void>;
 }
 
 export type AssistantStore = AssistantStoreState & AssistantStoreActions;
 
-const PLACEHOLDER_RESPONSES: Record<CoachingLevel, string[]> = {
-  observe: [
-    'Beobachtung notiert. Ich schaue mir das an.',
-    'Verstanden — ich behalte das im Blick.',
-    'Notiert. Ich beobachte den Verlauf.',
-  ],
-  suggest: [
-    'Guter Punkt! Hast du schon versucht, die Logs zu pruefen?',
-    'Ich wuerde vorschlagen, erst die Tests laufen zu lassen.',
-    'Interessant — vielleicht hilft ein Blick in die Dokumentation.',
-  ],
-  coach: [
-    'Lass uns das gemeinsam angehen. Was ist dein naechster Schritt?',
-    'Gute Frage! Denk mal darueber nach, was der Root Cause sein koennte.',
-    'Ich sehe Potenzial hier. Wie wuerdest du das refactoren?',
-  ],
-  act: [
-    'Ich kuemmere mich darum. Einen Moment...',
-    'Verstanden — ich fuehre das aus.',
-    'Wird erledigt. Ich starte den Prozess.',
-  ],
+const PRIORITY_ORDER: Record<SuggestionPriority, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
 };
 
-// Timeout-ID fuer Cleanup bei schnellem Senden
-let typingTimeoutId: ReturnType<typeof setTimeout> | null = null;
+const sortRichSuggestions = (suggestions: RichSuggestion[]): RichSuggestion[] => {
+  return [...suggestions].sort((a, b) => {
+    const byPriority = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+    if (byPriority !== 0) {
+      return byPriority;
+    }
 
-export const useAssistantStore = create<AssistantStore>((set, get) => ({
+    return b.timestamp - a.timestamp;
+  });
+};
+
+const createUserMessage = (content: string): AssistantMessage => {
+  return {
+    id: crypto.randomUUID(),
+    role: 'user',
+    content,
+    timestamp: Date.now(),
+  };
+};
+
+const removeRichSuggestionFromState = (
+  state: AssistantStoreState,
+  id: string,
+): Pick<AssistantStoreState, 'richSuggestions'> => {
+  return {
+    richSuggestions: state.richSuggestions.filter((item) => item.id !== id),
+  };
+};
+
+export const useAssistantStore = create<AssistantStore>((set) => ({
   isExpanded: false,
   messages: [],
   suggestions: [],
+  richSuggestions: [],
   coachingLevel: 'suggest',
   isTyping: false,
 
@@ -64,7 +89,10 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
   },
 
   addMessage: (message) => {
-    set((state) => ({ messages: [...state.messages, message] }));
+    set((state) => ({
+      messages: [...state.messages, message],
+      isTyping: message.role === 'assistant' ? false : state.isTyping,
+    }));
   },
 
   sendMessage: (content) => {
@@ -73,50 +101,30 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
       return;
     }
 
-    // Vorherigen Timeout abbrechen falls vorhanden
-    if (typingTimeoutId !== null) {
-      clearTimeout(typingTimeoutId);
-    }
-
-    const userMessage: AssistantMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: trimmed,
-      timestamp: Date.now(),
-    };
+    const userMessage = createUserMessage(trimmed);
 
     set((state) => ({
       messages: [...state.messages, userMessage],
       isTyping: true,
     }));
 
-    // Placeholder-Antwort nach zufaelliger Verzoegerung
-    const delay = 700 + Math.random() * 500;
-    typingTimeoutId = setTimeout(() => {
-      const { coachingLevel } = get();
-      const responses = PLACEHOLDER_RESPONSES[coachingLevel];
-      const text = responses[Math.floor(Math.random() * responses.length)] ?? responses[0];
-
-      const assistantMessage: AssistantMessage = {
+    void transport.invoke<void>('sendAssistantMessage', trimmed).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Senden';
+      const assistantErrorMessage: AssistantMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: text ?? '',
+        content: `Fehler: ${message}`,
         timestamp: Date.now(),
       };
 
       set((state) => ({
-        messages: [...state.messages, assistantMessage],
+        messages: [...state.messages, assistantErrorMessage],
         isTyping: false,
       }));
-      typingTimeoutId = null;
-    }, delay);
+    });
   },
 
   clearMessages: () => {
-    if (typingTimeoutId !== null) {
-      clearTimeout(typingTimeoutId);
-      typingTimeoutId = null;
-    }
     set({ messages: [], isTyping: false });
   },
 
@@ -126,11 +134,67 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
 
   removeSuggestion: (id) => {
     set((state) => ({
-      suggestions: state.suggestions.filter((s) => s.id !== id),
+      suggestions: state.suggestions.filter((item) => item.id !== id),
     }));
   },
 
   setCoachingLevel: (level) => {
     set({ coachingLevel: level });
+  },
+
+  addRichSuggestion: (suggestion) => {
+    set((state) => {
+      const withoutOld = state.richSuggestions.filter((item) => item.id !== suggestion.id);
+      return {
+        richSuggestions: sortRichSuggestions([...withoutOld, suggestion]),
+      };
+    });
+  },
+
+  removeRichSuggestion: (id) => {
+    set((state) => removeRichSuggestionFromState(state, id));
+  },
+
+  executeSuggestionAction: async (suggestionId, action) => {
+    const payload = action.payload;
+
+    if (action.type === 'focus-terminal') {
+      if (payload) {
+        useTerminalStore.getState().setActiveTerminal(payload);
+      }
+      return;
+    }
+
+    if (action.type === 'close-terminal') {
+      if (!payload) {
+        return;
+      }
+
+      await transport.invoke<void>('closeTerminal', { terminalId: payload });
+      useTerminalStore.getState().removeTerminal(payload);
+      return;
+    }
+
+    if (action.type === 'new-terminal') {
+      const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
+      await transport.invoke('createTerminal', {
+        workspaceId: activeWorkspaceId ?? undefined,
+      });
+      return;
+    }
+
+    if (action.type === 'send-prompt') {
+      if (!payload) {
+        return;
+      }
+
+      await transport.invoke<void>('writeTerminal', {
+        terminalId: payload,
+        data: 'Bitte analysiere den letzten Fehler und schlage einen Fix vor.\n',
+      });
+      return;
+    }
+
+    set((state) => removeRichSuggestionFromState(state, suggestionId));
   },
 }));

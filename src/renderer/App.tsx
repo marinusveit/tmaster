@@ -5,11 +5,12 @@ import { useKeyboardShortcuts } from '@renderer/hooks/useKeyboardShortcuts';
 import { TerminalView } from '@renderer/components/terminal/TerminalView';
 import { TerminalTabs } from '@renderer/components/terminal/TerminalTabs';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
-import { AssistantDrawer } from '@renderer/components/sidebar/AssistantDrawer';
+import { AssistantPanel } from '@renderer/components/sidebar/AssistantPanel';
 import { WorkspaceTabs } from '@renderer/components/workspace/WorkspaceTabs';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
+import { useAssistant } from '@renderer/hooks/useAssistant';
 import type { SplitMode } from '@renderer/stores/terminalStore';
 import type { TerminalSessionInfo } from '@shared/types/terminal';
 
@@ -40,7 +41,10 @@ export const App = (): JSX.Element => {
   const splitMode = useTerminalStore((s) => s.splitMode);
   const cycleSplitMode = useTerminalStore((s) => s.cycleSplitMode);
   const isAssistantExpanded = useAssistantStore((s) => s.isExpanded);
+  const toggleAssistant = useAssistantStore((s) => s.toggleExpanded);
   const activeWorkspaceTerminal = workspaceTerminals.find((terminal) => terminal.terminalId === activeTerminalId) ?? null;
+
+  useAssistant();
 
   const visibleTerminals: TerminalSessionInfo[] = useMemo(() => {
     const slotCounts: Record<SplitMode, number> = {
@@ -160,7 +164,7 @@ export const App = (): JSX.Element => {
           activeTerminalId={activeTerminalId}
           onSelectTerminal={switchTerminal}
         />
-        {isAssistantExpanded && <AssistantDrawer />}
+        <AssistantPanel isExpanded={isAssistantExpanded} onToggle={toggleAssistant} />
         <div className="terminal-area">
           <TerminalTabs
             terminals={workspaceTerminals}

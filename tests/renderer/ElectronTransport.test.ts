@@ -10,10 +10,20 @@ const mockApi = {
   onTerminalData: vi.fn(),
   onTerminalExit: vi.fn(),
   onTerminalStatus: vi.fn(),
+  onTerminalEvent: vi.fn(),
   createWorkspace: vi.fn(),
   listWorkspaces: vi.fn(),
   switchWorkspace: vi.fn(),
   updateWorkspace: vi.fn(),
+  listSessions: vi.fn(),
+  getContext: vi.fn(),
+  onConflict: vi.fn(),
+  onFileChange: vi.fn(),
+  sendAssistantMessage: vi.fn(),
+  onAssistantMessage: vi.fn(),
+  onSuggestion: vi.fn(),
+  onNotification: vi.fn(),
+  dismissNotification: vi.fn(),
 };
 
 describe('ElectronTransport', () => {

@@ -1,19 +1,76 @@
+import { AssistantChat } from './AssistantChat';
+import { AssistantSuggestions } from './AssistantSuggestions';
+import { CoachingLevelSelector } from './CoachingLevelSelector';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
 
+export interface AssistantPanelProps {
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
 export const AssistantTeaser = (): JSX.Element => {
-  const { isExpanded, toggleExpanded, suggestions } = useAssistantStore();
+  const isExpanded = useAssistantStore((state) => state.isExpanded);
+  const onToggle = useAssistantStore((state) => state.toggleExpanded);
+  const unreadCount = useAssistantStore((state) => state.richSuggestions.length);
 
   return (
     <button
-      className={`assistant-teaser${isExpanded ? ' assistant-teaser--active' : ''}`}
-      onClick={toggleExpanded}
+      className={`assistant-panel__teaser${isExpanded ? ' assistant-panel__teaser--active' : ''}`}
+      onClick={onToggle}
       type="button"
     >
-      <span className="assistant-teaser__icon">&gt;_</span>
-      <span className="assistant-teaser__label">AI Assistant</span>
-      {suggestions.length > 0 && (
-        <span className="assistant-teaser__badge">{suggestions.length}</span>
-      )}
+      <span className="assistant-panel__teaser-icon">💬</span>
+      <span className="assistant-panel__teaser-label">Assistent</span>
+      {unreadCount > 0 && <span className="assistant-panel__teaser-badge">{unreadCount}</span>}
     </button>
+  );
+};
+
+export const AssistantPanel = ({ isExpanded, onToggle }: AssistantPanelProps): JSX.Element | null => {
+  const messages = useAssistantStore((state) => state.messages);
+  const richSuggestions = useAssistantStore((state) => state.richSuggestions);
+  const coachingLevel = useAssistantStore((state) => state.coachingLevel);
+  const isTyping = useAssistantStore((state) => state.isTyping);
+  const sendMessage = useAssistantStore((state) => state.sendMessage);
+  const setCoachingLevel = useAssistantStore((state) => state.setCoachingLevel);
+  const removeRichSuggestion = useAssistantStore((state) => state.removeRichSuggestion);
+  const executeSuggestionAction = useAssistantStore((state) => state.executeSuggestionAction);
+
+  if (!isExpanded) {
+    return null;
+  }
+
+  return (
+    <aside className="assistant-panel" aria-label="Assistant Panel">
+      <header className="assistant-panel__header">
+        <span className="assistant-panel__title">💬 Assistent</span>
+        {richSuggestions.length > 0 && (
+          <span className="assistant-panel__badge" aria-label="ungelesene Vorschläge">
+            {richSuggestions.length}
+          </span>
+        )}
+        <button className="assistant-panel__toggle" onClick={onToggle} type="button">
+          ▾
+        </button>
+      </header>
+
+      <div className="assistant-panel__body">
+        <CoachingLevelSelector level={coachingLevel} onChange={setCoachingLevel} />
+
+        <AssistantSuggestions
+          suggestions={richSuggestions}
+          onDismiss={removeRichSuggestion}
+          onAction={(suggestionId, action) => {
+            void executeSuggestionAction(suggestionId, action);
+          }}
+        />
+
+        <AssistantChat
+          messages={messages}
+          isTyping={isTyping}
+          onSendMessage={sendMessage}
+        />
+      </div>
+    </aside>
   );
 };
