@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type BetterSqlite3 from 'better-sqlite3';
-import type { CoachingLevel, RichSuggestion, SuggestionAction } from '@shared/types/assistant';
-import type { TerminalEvent } from '@shared/types/event';
+import type { CoachingLevel, RichSuggestion, SuggestionAction } from '../../shared/types/assistant';
+import type { TerminalEvent } from '../../shared/types/event';
 
 interface EventSummaryRow {
   summary: string;

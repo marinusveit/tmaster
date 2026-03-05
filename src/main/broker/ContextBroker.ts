@@ -1,7 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3';
-import type { ContextQuery, ContextResult, FileConflict } from '@shared/types/broker';
-import type { EventType, TerminalEvent } from '@shared/types/event';
-import { getConflictingFiles } from '@main/db/queries';
+import type { ContextQuery, ContextResult, FileConflict } from '../../shared/types/broker';
+import type { EventType, TerminalEvent } from '../../shared/types/event';
+import { getConflictingFiles } from '../db/queries';
 
 interface EventQueryRow {
   timestamp: number;

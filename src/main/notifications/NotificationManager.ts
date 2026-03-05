@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { Notification } from 'electron';
 import type BetterSqlite3 from 'better-sqlite3';
-import { IPC_CHANNELS } from '@shared/ipc-channels';
-import type { AppNotification, NotificationLevel } from '@shared/types/notification';
-import type { TerminalEvent } from '@shared/types/event';
+import { IPC_CHANNELS } from '../../shared/ipc-channels';
+import type { AppNotification, NotificationLevel } from '../../shared/types/notification';
+import type { TerminalEvent } from '../../shared/types/event';
 import {
   insertNotification,
   listUnreadNotifications,
   markNotificationRead,
   type NotificationRow,
-} from '@main/db/queries';
+} from '../db/queries';
 
 interface NotifyParams {
   title: string;

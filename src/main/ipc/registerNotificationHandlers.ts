@@ -1,6 +1,6 @@
 import type { IpcMain } from 'electron';
-import { IPC_CHANNELS } from '@shared/ipc-channels';
-import type { NotificationManager } from '@main/notifications/NotificationManager';
+import { IPC_CHANNELS } from '../../shared/ipc-channels';
+import type { NotificationManager } from '../notifications/NotificationManager';
 
 export const registerNotificationHandlers = (
   ipcMain: IpcMain,

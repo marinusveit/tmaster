@@ -1,8 +1,8 @@
 import type { IpcMain } from 'electron';
-import { IPC_CHANNELS } from '@shared/ipc-channels';
-import type { ContextQuery } from '@shared/types/broker';
-import type { EventType } from '@shared/types/event';
-import type { ContextBroker } from '@main/broker/ContextBroker';
+import { IPC_CHANNELS } from '../../shared/ipc-channels';
+import type { ContextQuery } from '../../shared/types/broker';
+import type { EventType } from '../../shared/types/event';
+import type { ContextBroker } from '../broker/ContextBroker';
 
 const isObject = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;

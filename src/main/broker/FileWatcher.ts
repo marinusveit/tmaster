@@ -1,12 +1,13 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type BetterSqlite3 from 'better-sqlite3';
-import type { FileChangeEvent, FileConflict } from '@shared/types/broker';
+import type { FileChangeEvent, FileConflict } from '../../shared/types/broker';
 import {
   getConflictingFiles,
   removeAllFileLocksForTerminal,
   upsertFileLock,
-} from '@main/db/queries';
+} from '../db/queries';
 
 export type ChangeType = 'create' | 'modify' | 'delete';
 
@@ -89,7 +90,16 @@ export class FileWatcher {
       return;
     }
 
-    const watcher = this.createWatcher(workspacePath, (changeType, changedFilePath) => {
+    // Tilde expandieren — fs.watch versteht kein '~'
+    const resolvedPath = workspacePath.startsWith('~')
+      ? path.join(os.homedir(), workspacePath.slice(1))
+      : workspacePath;
+
+    if (!fs.existsSync(resolvedPath)) {
+      return;
+    }
+
+    const watcher = this.createWatcher(resolvedPath, (changeType, changedFilePath) => {
       const filePath = path.normalize(changedFilePath);
       const terminalId = `watcher:${workspaceId}`;
       const timestamp = Date.now();
@@ -112,7 +122,7 @@ export class FileWatcher {
 
     this.watchers.set(workspaceId, {
       workspaceId,
-      workspacePath,
+      workspacePath: resolvedPath,
       watcher,
     });
   }

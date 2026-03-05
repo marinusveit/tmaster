@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { IpcMain } from 'electron';
-import { IPC_CHANNELS } from '@shared/ipc-channels';
-import type { AssistantMessage } from '@shared/types/assistant';
-import type { ContextBroker } from '@main/broker/ContextBroker';
+import { IPC_CHANNELS } from '../../shared/ipc-channels';
+import type { AssistantMessage } from '../../shared/types/assistant';
+import type { ContextBroker } from '../broker/ContextBroker';
 
 interface RegisterAssistantHandlersOptions {
   contextBroker?: ContextBroker;
