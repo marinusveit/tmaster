@@ -31,7 +31,13 @@ export const AssistantPanel = ({ isExpanded, onToggle }: AssistantPanelProps): J
   const richSuggestions = useAssistantStore((state) => state.richSuggestions);
   const coachingLevel = useAssistantStore((state) => state.coachingLevel);
   const isTyping = useAssistantStore((state) => state.isTyping);
+  const currentDraft = useAssistantStore((state) => state.currentDraft);
+  const isExecutingDraft = useAssistantStore((state) => state.isExecutingDraft);
   const sendMessage = useAssistantStore((state) => state.sendMessage);
+  const updateDraft = useAssistantStore((state) => state.updateDraft);
+  const updateDraftAgentType = useAssistantStore((state) => state.updateDraftAgentType);
+  const executeDraft = useAssistantStore((state) => state.executeDraft);
+  const discardDraft = useAssistantStore((state) => state.discardDraft);
   const setCoachingLevel = useAssistantStore((state) => state.setCoachingLevel);
   const removeRichSuggestion = useAssistantStore((state) => state.removeRichSuggestion);
   const executeSuggestionAction = useAssistantStore((state) => state.executeSuggestionAction);
@@ -69,6 +75,14 @@ export const AssistantPanel = ({ isExpanded, onToggle }: AssistantPanelProps): J
           messages={messages}
           isTyping={isTyping}
           onSendMessage={sendMessage}
+          currentDraft={currentDraft}
+          isExecutingDraft={isExecutingDraft}
+          onDraftEdit={updateDraft}
+          onDraftAgentTypeChange={updateDraftAgentType}
+          onExecuteDraft={() => {
+            void executeDraft();
+          }}
+          onDiscardDraft={discardDraft}
         />
       </div>
     </aside>

@@ -1,15 +1,18 @@
 import { create } from 'zustand';
-import { transport } from '@renderer/transport';
-import { useTerminalStore } from '@renderer/stores/terminalStore';
-import { useWorkspaceStore } from '@renderer/stores/workspaceStore';
 import type {
   AssistantMessage,
   CoachingLevel,
+  PromptAgentType,
+  PromptDraft,
   RichSuggestion,
   Suggestion,
   SuggestionAction,
   SuggestionPriority,
 } from '@shared/types/assistant';
+import type { ListTerminalsResponse } from '@shared/types/terminal';
+import { transport } from '@renderer/transport';
+import { useTerminalStore } from '@renderer/stores/terminalStore';
+import { useWorkspaceStore } from '@renderer/stores/workspaceStore';
 
 interface AssistantStoreState {
   isExpanded: boolean;
@@ -18,6 +21,9 @@ interface AssistantStoreState {
   richSuggestions: RichSuggestion[];
   coachingLevel: CoachingLevel;
   isTyping: boolean;
+  currentDraft: PromptDraft | null;
+  isGeneratingDraft: boolean;
+  isExecutingDraft: boolean;
 }
 
 interface AssistantStoreActions {
@@ -25,6 +31,11 @@ interface AssistantStoreActions {
   setExpanded: (expanded: boolean) => void;
   addMessage: (message: AssistantMessage) => void;
   sendMessage: (content: string) => void;
+  generatePrompt: (intent: string) => Promise<void>;
+  updateDraft: (content: string) => void;
+  updateDraftAgentType: (agentType: PromptAgentType) => void;
+  executeDraft: () => Promise<void>;
+  discardDraft: () => void;
   clearMessages: () => void;
   setSuggestions: (suggestions: Suggestion[]) => void;
   removeSuggestion: (id: string) => void;
@@ -63,6 +74,41 @@ const createUserMessage = (content: string): AssistantMessage => {
   };
 };
 
+const createAssistantMessage = (content: string): AssistantMessage => {
+  return {
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    content,
+    timestamp: Date.now(),
+  };
+};
+
+const INTENT_KEYWORDS = [
+  'soll',
+  'mach',
+  'fixe',
+  'implementiere',
+  'baue',
+  'starte',
+  'fix',
+  'implement',
+  'build',
+  'start',
+  'please',
+] as const;
+
+export const isIntentMessage = (content: string): boolean => {
+  const normalized = content.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return INTENT_KEYWORDS.some((keyword) => {
+    const pattern = new RegExp(`(^|\\W)${keyword}(\\W|$)`, 'i');
+    return pattern.test(normalized);
+  });
+};
+
 const removeRichSuggestionFromState = (
   state: AssistantStoreState,
   id: string,
@@ -72,13 +118,16 @@ const removeRichSuggestionFromState = (
   };
 };
 
-export const useAssistantStore = create<AssistantStore>((set) => ({
+export const useAssistantStore = create<AssistantStore>((set, get) => ({
   isExpanded: false,
   messages: [],
   suggestions: [],
   richSuggestions: [],
   coachingLevel: 'suggest',
   isTyping: false,
+  currentDraft: null,
+  isGeneratingDraft: false,
+  isExecutingDraft: false,
 
   toggleExpanded: () => {
     set((state) => ({ isExpanded: !state.isExpanded }));
@@ -108,20 +157,138 @@ export const useAssistantStore = create<AssistantStore>((set) => ({
       isTyping: true,
     }));
 
+    if (isIntentMessage(trimmed)) {
+      void get().generatePrompt(trimmed);
+      return;
+    }
+
     void transport.invoke<void>('sendAssistantMessage', trimmed).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Senden';
-      const assistantErrorMessage: AssistantMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `Fehler: ${message}`,
-        timestamp: Date.now(),
-      };
+      const assistantErrorMessage = createAssistantMessage(`Fehler: ${message}`);
 
       set((state) => ({
         messages: [...state.messages, assistantErrorMessage],
         isTyping: false,
       }));
     });
+  },
+
+  generatePrompt: async (intent) => {
+    const trimmed = intent.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    set({
+      isGeneratingDraft: true,
+      isTyping: true,
+    });
+
+    try {
+      const draft = await transport.invoke<PromptDraft>('generatePrompt', trimmed);
+      const assistantInfoMessage = createAssistantMessage(
+        'Hier ist mein Prompt-Entwurf. Bearbeite ihn oder klicke [Übernehmen].',
+      );
+
+      set((state) => ({
+        currentDraft: draft,
+        isGeneratingDraft: false,
+        isTyping: false,
+        messages: [...state.messages, assistantInfoMessage],
+      }));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Generieren';
+      const assistantErrorMessage = createAssistantMessage(`Fehler: ${message}`);
+
+      set((state) => ({
+        isGeneratingDraft: false,
+        isTyping: false,
+        messages: [...state.messages, assistantErrorMessage],
+      }));
+    }
+  },
+
+  updateDraft: (content) => {
+    set((state) => {
+      if (!state.currentDraft) {
+        return state;
+      }
+
+      const hasContentChanged = state.currentDraft.content !== content;
+      return {
+        currentDraft: {
+          ...state.currentDraft,
+          content,
+          isEdited: state.currentDraft.isEdited || hasContentChanged,
+        },
+      };
+    });
+  },
+
+  updateDraftAgentType: (agentType) => {
+    set((state) => {
+      if (!state.currentDraft) {
+        return state;
+      }
+
+      return {
+        currentDraft: {
+          ...state.currentDraft,
+          agentType,
+          isEdited: true,
+        },
+      };
+    });
+  },
+
+  executeDraft: async () => {
+    const { currentDraft, isExecutingDraft } = get();
+    if (!currentDraft || isExecutingDraft) {
+      return;
+    }
+
+    set({ isExecutingDraft: true });
+
+    try {
+      const result = await transport.invoke<{ terminalId: string }>('executePrompt', currentDraft);
+      const terminalStore = useTerminalStore.getState();
+      terminalStore.setActiveTerminal(result.terminalId);
+
+      const assistantInfoMessage = createAssistantMessage(
+        `Terminal ${result.terminalId} gestartet mit deinem Prompt.`,
+      );
+      const assistantMessages = [assistantInfoMessage];
+
+      try {
+        const terminalsResponse = await transport.invoke<ListTerminalsResponse>('listTerminals');
+        terminalStore.setTerminals(terminalsResponse.terminals);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Aktualisieren';
+        assistantMessages.push(
+          createAssistantMessage(
+            `Hinweis: Terminal ${result.terminalId} wurde gestartet, die Terminal-Liste konnte aber nicht aktualisiert werden (${message}).`,
+          ),
+        );
+      }
+
+      set((state) => ({
+        currentDraft: null,
+        isExecutingDraft: false,
+        messages: [...state.messages, ...assistantMessages],
+      }));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Ausführen';
+      const assistantErrorMessage = createAssistantMessage(`Fehler: ${message}`);
+
+      set((state) => ({
+        isExecutingDraft: false,
+        messages: [...state.messages, assistantErrorMessage],
+      }));
+    }
+  },
+
+  discardDraft: () => {
+    set({ currentDraft: null });
   },
 
   clearMessages: () => {

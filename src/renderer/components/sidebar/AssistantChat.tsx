@@ -1,13 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AssistantMessage } from '@shared/types/assistant';
+import type { AssistantMessage, PromptAgentType, PromptDraft } from '@shared/types/assistant';
+import { PromptDraftEditor } from './PromptDraftEditor';
 
 interface AssistantChatProps {
   messages: AssistantMessage[];
   isTyping: boolean;
   onSendMessage: (content: string) => void;
+  currentDraft: PromptDraft | null;
+  isExecutingDraft: boolean;
+  onDraftEdit: (content: string) => void;
+  onDraftAgentTypeChange: (agentType: PromptAgentType) => void;
+  onExecuteDraft: () => void;
+  onDiscardDraft: () => void;
 }
 
-export const AssistantChat = ({ messages, isTyping, onSendMessage }: AssistantChatProps): JSX.Element => {
+export const AssistantChat = ({
+  messages,
+  isTyping,
+  onSendMessage,
+  currentDraft,
+  isExecutingDraft,
+  onDraftEdit,
+  onDraftAgentTypeChange,
+  onExecuteDraft,
+  onDiscardDraft,
+}: AssistantChatProps): JSX.Element => {
   const [input, setInput] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -52,6 +69,18 @@ export const AssistantChat = ({ messages, isTyping, onSendMessage }: AssistantCh
 
         <div ref={endRef} />
       </div>
+
+      {currentDraft && (
+        <PromptDraftEditor
+          draft={currentDraft}
+          onEdit={onDraftEdit}
+          onExecute={onExecuteDraft}
+          onDiscard={onDiscardDraft}
+          onAgentTypeChange={onDraftAgentTypeChange}
+          isExecuting={isExecutingDraft}
+        />
+      )}
+
       <div className="assistant-chat__input-row">
         <textarea
           className="assistant-chat__input"
