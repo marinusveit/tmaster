@@ -288,7 +288,31 @@ Hinweis: `fastScrollModifier` wurde in xterm.js 6 entfernt.
 
 ---
 
-## Event-Extraktor (regelbasiert, kein LLM)
+## Dreistufiges Triage-Modell (Event-Analyse-Pipeline)
+
+Terminal-Output durchlaeuft drei Stufen mit steigender Intelligenz und steigenden Kosten.
+Jede Stufe reduziert das Volumen fuer die naechste um ca. 90%.
+
+```
+Terminal Output (tausende Zeilen/Minute)
+  |
+  v
+Stufe 1: Regex + Heuristiken (lokal, gratis, <1ms)
+  |-- 99% verworfen (HMR-Updates, Logspam, etc.)
+  |-- Kandidaten: Error-Patterns, bekannte Prompts, Stille-Timer
+  v
+Stufe 2: Sonnet on-demand (~$0.005/Call, 5-20 Calls/h)
+  |-- False Positives aussortiert
+  |-- Zustandsklassifikation: action_required | error | completed | working | idle
+  |-- Zusammenfassung fuer Orchestrator
+  v
+Stufe 3: Orchestrator / Claude Code via MCP (Max-Abo)
+  |-- Gesamtbild aller Terminals
+  |-- Strategie-Entscheidungen, Prompt-Erstellung
+  |-- 1-3 Interaktionen pro Stunde
+```
+
+### Stufe 1: Event-Extraktor (regelbasiert, kein LLM)
 
 Komprimiert Terminal-Output zu strukturierten Events im Main Process:
 
@@ -296,11 +320,11 @@ Komprimiert Terminal-Output zu strukturierten Events im Main Process:
 interface TerminalEvent {
   terminalId: string;
   timestamp: number;
-  type: 'error' | 'warning' | 'completed' | 'waiting' | 'file_changed' | 
+  type: 'error' | 'warning' | 'completed' | 'waiting' | 'file_changed' |
         'test_result' | 'server_started' | 'server_stopped' | 'context_warning';
   summary: string;         // Kompakt, max 200 chars
-  details?: string;        // Für Deep-Dive
-  source: 'pattern' | 'exit_code' | 'hook';
+  details?: string;        // Fuer Deep-Dive
+  source: 'pattern' | 'exit_code' | 'hook' | 'llm_triage';
 }
 
 // Pattern-Matching (Regex, kein LLM)
@@ -310,10 +334,88 @@ const patterns = [
   { regex: /FAIL.*\d+ tests?/, type: 'test_result' },
   { regex: /listening on port (\d+)/, type: 'server_started' },
   { regex: /context window.*(\d+)%/, type: 'context_warning' },
-  { regex: /waiting for input|⏳/, type: 'waiting' },
+  { regex: /waiting for input/, type: 'waiting' },
+  { regex: /\? \(y\/n\)|\[Y\/n\]|\(yes\/no\)/, type: 'waiting' },
   // ...erweiterbar
 ];
 ```
+
+**Stille-Erkennung (Heuristik):**
+Kein neuer Output seit >90 Sekunden bei einem Terminal mit Status `active`
+erzeugt einen Kandidaten fuer Stufe 2. Verhindert dass stumme Prompts
+(z.B. Claude Code Plan-Bestaetigung, git rebase Editor) unbemerkt bleiben.
+
+**Trigger fuer Stufe 2:**
+1. Regex findet Kandidat (Error, Warning, ambiges Pattern)
+2. Stille-Timer: >90s kein Output bei aktivem Prozess
+3. Output-Burst nach Stille (Agent hat etwas produziert)
+4. Prozess-Exit (Zusammenfassung anfordern)
+5. Ambige Keywords in letzten Zeilen ("plan", "confirm", "review", "approve")
+
+### Stufe 2: LLM-Triage via Claude Code CLI (on-demand, Max-Abo)
+
+Wird NUR aufgerufen wenn Stufe 1 einen Kandidaten liefert. Nutzt `claude -p` (print-Modus)
+als single-shot CLI-Call. Kein dauerhafter Agent, kein API-Key noetig — laeuft ueber das
+Anthropic Max-Abo das auch fuer die Coding-Agents genutzt wird.
+
+**Aufruf:**
+```bash
+claude -p --output-format json "Terminal T3 (claude), laeuft seit 340s. ..."
+```
+
+`claude -p` startet Claude Code im non-interaktiven Modus: eine Frage rein, eine Antwort raus,
+Prozess beendet sich. Overhead ~1-2s pro Call — bei 5-20 Calls/h vernachlaessigbar.
+
+```typescript
+interface TriageRequest {
+  terminalId: string;
+  agentType: string;                    // 'claude' | 'codex' | 'devserver' | 'generic'
+  recentOutput: string;                 // Letzte ~100 Zeilen (secret-gefiltert)
+  triggerReason: TriageTrigger;         // Warum Stufe 2 aufgerufen wurde
+  terminalMeta: {
+    status: string;
+    runtimeSeconds: number;
+    lastEventType?: EventType;
+  };
+}
+
+type TriageTrigger =
+  | 'regex_match'          // Stufe 1 hat Pattern gefunden
+  | 'silence_timeout'      // Kein Output seit >90s
+  | 'output_burst'         // Ploetzlich viel Output nach Stille
+  | 'process_exit'         // Prozess beendet
+  | 'ambiguous_keyword';   // "plan", "confirm", etc.
+
+interface TriageResult {
+  status: 'action_required' | 'error' | 'completed' | 'working' | 'idle';
+  summary: string;           // Kurzbeschreibung fuer UI und Orchestrator
+  detail?: string;           // Was genau passiert / erwartet wird
+  urgency: 'critical' | 'high' | 'medium' | 'low';
+  escalate: boolean;         // An Orchestrator (Stufe 3) weiterleiten?
+}
+```
+
+**Kosten:** Null zusaetzlich — laeuft ueber Max-Abo.
+Bei 5-20 Calls/Stunde ueber alle Terminals ist die Rate-Limit-Belastung minimal.
+
+**Beispiel — Claude Code wartet auf Plan-Bestaetigung:**
+```
+Stufe 1: Stille-Timer triggert nach 90s, Keyword "plan" in letzten Zeilen
+Stufe 2 (Sonnet):
+  Input: Letzte 100 Zeilen zeigen einen Plan mit 3 Datei-Aenderungen
+  Output: { status: "action_required",
+            summary: "Claude Code wartet auf Plan-Bestaetigung",
+            detail: "Plan mit 3 Dateien, Enter druecken zum Starten",
+            urgency: "medium",
+            escalate: false }
+Notification: "T3: Plan-Bestaetigung ausstehend (3 Dateien) [Fokussieren]"
+```
+
+### Stufe 3: Orchestrator (Claude Code CLI via MCP, Max-Abo)
+
+Eine einzelne Claude Code Session die das Gesamtbild hat.
+Bekommt nur eskalierte, zusammengefasste Events aus Stufe 2.
+Siehe Abschnitt "Kontext-Broker" und "MCP-Integration" weiter unten.
 
 Events werden in SQLite gespeichert und dem AI-Assistenten als kompakter Kontext bereitgestellt.
 
@@ -513,8 +615,8 @@ Hypothesen, die im Projekt gemessen werden müssen:
 ## Offene Architektur-Fragen
 
 1. `[OFFEN]` Output in Session-Logs persistieren oder nur Events?
-2. `[OFFEN]` Sub-Agents (Kontext-Broker): eigene Claude-Sessions oder rein regelbasiert im MVP?
-3. `[OFFEN]` Wie erkennen wir "waiting for input" zuverlässig bei verschiedenen Agents?
+2. `[ENTSCHIEDEN]` Dreistufiges Triage-Modell: Regex (gratis) -> Sonnet on-demand (~$0.005/Call) -> Orchestrator via MCP (Max-Abo). Kein eigener Agent pro Terminal.
+3. `[ENTSCHIEDEN]` "Waiting for input" wird zweistufig erkannt: Regex fuer bekannte Prompts + Stille-Timer (>90s) triggert Sonnet-Analyse fuer ambige Situationen (Plan-Bestaetigung, Editor-Prompts, etc.)
 4. `[BESTÄTIGT]` MCP-Integration: Claude Code und Codex CLI unterstützen MCP bereits
 5. `[UNTERSUCHEN]` RAG über Terminal-History mit sqlite-vec
 6. `[SPÄTER]` Shared WebGL Canvas für >16 sichtbare Terminals (Chromium-Limit variiert je nach Version/Plattform, ~16 auf Desktop üblich)
