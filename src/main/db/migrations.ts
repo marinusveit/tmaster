@@ -85,5 +85,19 @@ export const runMigrations = (db: BetterSqlite3.Database): void => {
 
     CREATE INDEX IF NOT EXISTS idx_notifications_timestamp
       ON notifications(timestamp);
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_terminal_id
+      ON sessions(terminal_id);
+
+    CREATE INDEX IF NOT EXISTS idx_events_workspace_time
+      ON session_events(session_id, event_type, timestamp DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_file_locks_file_terminal
+      ON file_locks(file_path, terminal_id);
+  `);
+
+  // Retention: alte file_changes aufräumen (älter als 24h)
+  db.exec(`
+    DELETE FROM file_changes WHERE timestamp < ${Date.now() - 24 * 60 * 60 * 1000};
   `);
 };

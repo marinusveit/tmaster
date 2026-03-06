@@ -26,6 +26,7 @@ export const getDatabase = (dbPath?: string): BetterSqlite3.Database => {
   database.pragma('journal_mode = WAL');
   database.pragma('synchronous = NORMAL');
   database.pragma('foreign_keys = ON');
+  database.pragma('optimize');
 
   return database;
 };

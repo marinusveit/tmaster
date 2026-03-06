@@ -81,15 +81,24 @@ const createDefaultWatcher: WatcherFactory = (workspacePath, onFileEvent) => {
   };
 };
 
+const FILE_CHANGES_RETENTION_MS = 24 * 60 * 60 * 1000;
+const FILE_CHANGES_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+
 export class FileWatcher {
   private readonly watchers = new Map<string, WorkspaceState>();
+  private readonly retentionInterval: NodeJS.Timeout;
 
   public constructor(
     private readonly db: BetterSqlite3.Database,
     private readonly onConflict: (conflict: FileConflict) => void,
     private readonly onFileChange: (event: FileChangeEvent) => void,
     private readonly createWatcher: WatcherFactory = createDefaultWatcher,
-  ) {}
+  ) {
+    // Periodisch alte file_changes aufräumen
+    this.retentionInterval = setInterval(() => {
+      this.pruneOldFileChanges();
+    }, FILE_CHANGES_CLEANUP_INTERVAL_MS);
+  }
 
   public watch(workspaceId: string, workspacePath: string): void {
     if (this.watchers.has(workspaceId)) {
@@ -148,6 +157,12 @@ export class FileWatcher {
     for (const workspaceId of this.watchers.keys()) {
       this.unwatch(workspaceId);
     }
+    clearInterval(this.retentionInterval);
+  }
+
+  private pruneOldFileChanges(): void {
+    const cutoff = Date.now() - FILE_CHANGES_RETENTION_MS;
+    this.db.prepare('DELETE FROM file_changes WHERE timestamp < ?').run(cutoff);
   }
 
   public registerFileAccess(filePath: string, terminalId: string, workspaceId: string): void {
