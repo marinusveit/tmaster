@@ -75,8 +75,6 @@ export const App = (): JSX.Element => {
   const isAssistantExpanded = useAssistantStore((s) => s.isExpanded);
   const toggleAssistant = useAssistantStore((s) => s.toggleExpanded);
   const addAssistantMessage = useAssistantStore((s) => s.addMessage);
-  const activeWorkspaceTerminal = workspaceTerminals.find((terminal) => terminal.terminalId === activeTerminalId) ?? null;
-
   useAssistant();
 
   const visibleTerminals: TerminalSessionInfo[] = useMemo(() => {
@@ -88,21 +86,9 @@ export const App = (): JSX.Element => {
     };
     const slots = slotCounts[splitMode];
 
-    // Aktives Terminal zuerst, dann weitere aus dem Workspace
-    const result: TerminalSessionInfo[] = [];
-    if (activeWorkspaceTerminal) {
-      result.push(activeWorkspaceTerminal);
-    }
-    for (const t of workspaceTerminals) {
-      if (result.length >= slots) {
-        break;
-      }
-      if (!result.some((r) => r.terminalId === t.terminalId)) {
-        result.push(t);
-      }
-    }
-    return result;
-  }, [splitMode, activeWorkspaceTerminal, workspaceTerminals]);
+    // Terminals in natürlicher Reihenfolge belassen — kein Umsortieren
+    return workspaceTerminals.slice(0, slots);
+  }, [splitMode, workspaceTerminals]);
 
   const shouldShowResizer = (splitMode === 'horizontal' || splitMode === 'vertical') && visibleTerminals.length > 1;
   const resizerDirection = splitMode === 'horizontal' ? 'horizontal' : 'vertical';
