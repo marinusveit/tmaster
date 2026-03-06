@@ -5,11 +5,15 @@ import type { WorkspaceId } from '@shared/types/workspace';
 export type SplitMode = 'single' | 'horizontal' | 'vertical' | 'grid';
 
 const SPLIT_MODE_CYCLE: SplitMode[] = ['single', 'horizontal', 'vertical', 'grid'];
+const DEFAULT_SPLIT_RATIO = 0.5;
+const MIN_SPLIT_RATIO = 0.2;
+const MAX_SPLIT_RATIO = 0.8;
 
 interface TerminalStoreState {
   terminals: Map<TerminalId, TerminalSessionInfo>;
   activeTerminalId: TerminalId | null;
   splitMode: SplitMode;
+  splitRatio: number;
 }
 
 interface TerminalStoreActions {
@@ -22,6 +26,8 @@ interface TerminalStoreActions {
   setTerminals: (terminals: TerminalSessionInfo[]) => void;
   setSplitMode: (mode: SplitMode) => void;
   cycleSplitMode: () => void;
+  setSplitRatio: (ratio: number) => void;
+  resetSplitRatio: () => void;
 }
 
 export type TerminalStore = TerminalStoreState & TerminalStoreActions;
@@ -30,6 +36,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
   terminals: new Map(),
   activeTerminalId: null,
   splitMode: 'single' as SplitMode,
+  splitRatio: DEFAULT_SPLIT_RATIO,
 
   addTerminal: (terminal) => {
     set((state) => {
@@ -98,5 +105,14 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       const nextMode = SPLIT_MODE_CYCLE[(currentIndex + 1) % SPLIT_MODE_CYCLE.length] ?? 'single';
       return { splitMode: nextMode };
     });
+  },
+
+  setSplitRatio: (ratio) => {
+    const clampedRatio = Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));
+    set({ splitRatio: clampedRatio });
+  },
+
+  resetSplitRatio: () => {
+    set({ splitRatio: DEFAULT_SPLIT_RATIO });
   },
 }));

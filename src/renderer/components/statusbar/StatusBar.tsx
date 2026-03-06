@@ -1,11 +1,33 @@
 import type { TerminalSessionInfo } from '@shared/types/terminal';
+import type { SplitMode } from '@renderer/stores/terminalStore';
 
 interface StatusBarProps {
   terminals: TerminalSessionInfo[];
   workspaceName: string;
+  splitMode: SplitMode;
+  onCycleSplitMode: () => void;
 }
 
-export const StatusBar = ({ terminals, workspaceName }: StatusBarProps): JSX.Element => {
+const SPLIT_MODE_SYMBOLS: Record<SplitMode, string> = {
+  single: '[1]',
+  horizontal: '[||]',
+  vertical: '[=]',
+  grid: '[#]',
+};
+
+const SPLIT_MODE_LABELS: Record<SplitMode, string> = {
+  single: 'Single',
+  horizontal: 'Horizontal',
+  vertical: 'Vertical',
+  grid: 'Grid',
+};
+
+export const StatusBar = ({
+  terminals,
+  workspaceName,
+  splitMode,
+  onCycleSplitMode,
+}: StatusBarProps): JSX.Element => {
   const active = terminals.filter((t) => t.status === 'active').length;
   const idle = terminals.filter((t) => t.status === 'idle').length;
   const exited = terminals.filter((t) => t.status === 'exited').length;
@@ -34,6 +56,14 @@ export const StatusBar = ({ terminals, workspaceName }: StatusBarProps): JSX.Ele
       ) : (
         <span className="status-bar__empty">Keine Terminals</span>
       )}
+      <button
+        className="status-bar__split-toggle"
+        onClick={onCycleSplitMode}
+        type="button"
+        title={`Split Mode: ${SPLIT_MODE_LABELS[splitMode]}`}
+      >
+        {SPLIT_MODE_SYMBOLS[splitMode]} Split
+      </button>
       <span className="status-bar__workspace">{workspaceName}</span>
     </footer>
   );

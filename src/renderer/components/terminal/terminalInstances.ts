@@ -1,16 +1,19 @@
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { transport } from '@renderer/transport';
+import { WebglAddon } from '@xterm/addon-webgl';
 import type { TerminalId, TerminalDataEvent, TerminalExitEvent } from '@shared/types/terminal';
+import { transport } from '@renderer/transport';
+import { logRendererWarning } from '@renderer/utils/logger';
 
 /**
  * Cached xterm.js-Instanz. Lebt unabhängig vom React-Lifecycle,
  * damit Remounts (z.B. durch StrictMode oder loadTerminals-Race)
  * den Buffer nicht zerstören.
  */
-interface CachedTerminal {
+export interface CachedTerminal {
   terminal: Terminal;
   fitAddon: FitAddon;
+  webglAddon: WebglAddon | null;
   cleanups: (() => void)[];
   isOpened: boolean;
 }
@@ -40,17 +43,6 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
   const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
 
-  // TODO: WebGL temporär deaktiviert zur SIGSEGV-Diagnose
-  // try {
-  //   const webglAddon = new WebglAddon();
-  //   webglAddon.onContextLoss(() => {
-  //     webglAddon.dispose();
-  //   });
-  //   terminal.loadAddon(webglAddon);
-  // } catch {
-  //   // WebGL ist optional: Terminal bleibt mit Canvas-Renderer funktionsfähig.
-  // }
-
   const cleanups: (() => void)[] = [];
 
   // User-Input → PTY
@@ -79,9 +71,53 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
   });
   cleanups.push(exitCleanup);
 
-  const entry: CachedTerminal = { terminal, fitAddon, cleanups, isOpened: false };
+  const entry: CachedTerminal = {
+    terminal,
+    fitAddon,
+    webglAddon: null,
+    cleanups,
+    isOpened: false,
+  };
   cache.set(terminalId, entry);
   return entry;
+};
+
+/**
+ * Aktiviert den WebGL-Renderer fuer sichtbare Terminal-Views.
+ * Faellt bei Fehlern automatisch auf Canvas zurueck.
+ */
+export const enableTerminalWebgl = (entry: CachedTerminal): void => {
+  if (entry.webglAddon) {
+    return;
+  }
+
+  try {
+    const webglAddon = new WebglAddon();
+    webglAddon.onContextLoss(() => {
+      webglAddon.dispose();
+      if (entry.webglAddon === webglAddon) {
+        entry.webglAddon = null;
+      }
+    });
+    entry.terminal.loadAddon(webglAddon);
+    entry.webglAddon = webglAddon;
+  } catch (error: unknown) {
+    // WebGL ist optional: Terminal bleibt mit Canvas-Renderer funktionsfaehig.
+    logRendererWarning('WebGL-Addon konnte nicht aktiviert werden, Fallback auf Canvas.', error);
+  }
+};
+
+/**
+ * Deaktiviert den WebGL-Renderer fuer unsichtbare Terminal-Views.
+ */
+export const disableTerminalWebgl = (terminalId: TerminalId): void => {
+  const entry = cache.get(terminalId);
+  if (!entry?.webglAddon) {
+    return;
+  }
+
+  entry.webglAddon.dispose();
+  entry.webglAddon = null;
 };
 
 /**
@@ -92,6 +128,8 @@ export const destroyTerminalInstance = (terminalId: TerminalId): void => {
   if (!entry) {
     return;
   }
+
+  disableTerminalWebgl(terminalId);
 
   for (const cleanup of entry.cleanups) {
     cleanup();

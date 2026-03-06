@@ -1,7 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { transport } from '@renderer/transport';
-import { getOrCreateTerminal } from '@renderer/components/terminal/terminalInstances';
 import type { TerminalId } from '@shared/types/terminal';
+import { transport } from '@renderer/transport';
+import {
+  disableTerminalWebgl,
+  enableTerminalWebgl,
+  getOrCreateTerminal,
+} from '@renderer/components/terminal/terminalInstances';
 
 interface TerminalViewProps {
   terminalId: TerminalId;
@@ -16,14 +20,15 @@ export const TerminalView = ({ terminalId }: TerminalViewProps): JSX.Element => 
       return;
     }
 
-    const { terminal, fitAddon, isOpened } = getOrCreateTerminal(terminalId);
+    const cachedTerminal = getOrCreateTerminal(terminalId);
+    const { terminal, fitAddon, isOpened } = cachedTerminal;
+    enableTerminalWebgl(cachedTerminal);
 
     if (!isOpened) {
       // Erster Mount: Terminal im DOM öffnen
       terminal.open(container);
       // Marker setzen damit wir nicht nochmal open() aufrufen
-      const cached = getOrCreateTerminal(terminalId);
-      cached.isOpened = true;
+      cachedTerminal.isOpened = true;
     } else if (terminal.element && terminal.element.parentElement !== container) {
       // Remount: DOM-Element in den neuen Container verschieben
       container.appendChild(terminal.element);
@@ -61,6 +66,7 @@ export const TerminalView = ({ terminalId }: TerminalViewProps): JSX.Element => 
 
     return () => {
       observer.disconnect();
+      disableTerminalWebgl(terminalId);
       // Terminal wird NICHT disposed — lebt im Cache weiter.
       // Nur der ResizeObserver wird aufgeräumt.
     };
