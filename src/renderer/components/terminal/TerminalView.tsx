@@ -45,26 +45,37 @@ export const TerminalView = ({ terminalId }: TerminalViewProps): JSX.Element => 
       });
     }
 
+    let resizeRafId: number | null = null;
     const observer = new ResizeObserver(() => {
-      // Nur fitten wenn Container sichtbar ist (nicht display:none)
-      if (container.offsetWidth === 0 && container.offsetHeight === 0) {
+      // Debounce via rAF um Layout-Thrashing bei schnellem Resize zu vermeiden
+      if (resizeRafId !== null) {
         return;
       }
+      resizeRafId = requestAnimationFrame(() => {
+        resizeRafId = null;
+        // Nur fitten wenn Container sichtbar ist (nicht display:none)
+        if (container.offsetWidth === 0 && container.offsetHeight === 0) {
+          return;
+        }
 
-      fitAddon.fit();
+        fitAddon.fit();
 
-      if (terminal.cols > 0 && terminal.rows > 0) {
-        void transport.invoke<void>('resizeTerminal', {
-          terminalId,
-          cols: terminal.cols,
-          rows: terminal.rows,
-        });
-      }
+        if (terminal.cols > 0 && terminal.rows > 0) {
+          void transport.invoke<void>('resizeTerminal', {
+            terminalId,
+            cols: terminal.cols,
+            rows: terminal.rows,
+          });
+        }
+      });
     });
 
     observer.observe(container);
 
     return () => {
+      if (resizeRafId !== null) {
+        cancelAnimationFrame(resizeRafId);
+      }
       observer.disconnect();
       disableTerminalWebgl(terminalId);
       // Terminal wird NICHT disposed — lebt im Cache weiter.

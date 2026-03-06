@@ -26,16 +26,24 @@ export const SplitResizer = ({ direction, onResize }: SplitResizerProps): JSX.El
       return;
     }
 
+    let rafPending = false;
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
-      if (direction === 'horizontal') {
-        const relativeX = (moveEvent.clientX - rect.left) / rect.width;
-        onResize(clampRatio(relativeX));
+      if (rafPending) {
         return;
       }
+      rafPending = true;
+      requestAnimationFrame(() => {
+        rafPending = false;
+        const rect = container.getBoundingClientRect();
+        if (direction === 'horizontal') {
+          const relativeX = (moveEvent.clientX - rect.left) / rect.width;
+          onResize(clampRatio(relativeX));
+          return;
+        }
 
-      const relativeY = (moveEvent.clientY - rect.top) / rect.height;
-      onResize(clampRatio(relativeY));
+        const relativeY = (moveEvent.clientY - rect.top) / rect.height;
+        onResize(clampRatio(relativeY));
+      });
     };
 
     const onMouseUp = () => {

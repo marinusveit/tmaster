@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import type { TerminalSessionInfo } from '@shared/types/terminal';
 import { useTerminals } from '@renderer/hooks/useTerminals';
@@ -37,10 +37,37 @@ export const App = (): JSX.Element => {
 
   const orderedWorkspaces = getOrderedWorkspaces();
   const activeWorkspace = orderedWorkspaces.find((ws) => ws.id === activeWorkspaceId);
-  const workspaceTerminals = activeWorkspaceId
+  const rawWorkspaceTerminals = activeWorkspaceId
     ? getTerminalsByWorkspace(activeWorkspaceId)
     : getOrderedTerminals();
-  const allTerminals = getOrderedTerminals();
+  const rawAllTerminals = getOrderedTerminals();
+
+  // Stabile Referenzen: Nur neue Arrays liefern wenn sich Inhalt ändert
+  const prevWorkspaceTerminalsRef = useRef(rawWorkspaceTerminals);
+  const workspaceTerminals = useMemo(() => {
+    const prev = prevWorkspaceTerminalsRef.current;
+    if (
+      prev.length === rawWorkspaceTerminals.length
+      && prev.every((t, i) => t.terminalId === rawWorkspaceTerminals[i]?.terminalId && t.status === rawWorkspaceTerminals[i]?.status)
+    ) {
+      return prev;
+    }
+    prevWorkspaceTerminalsRef.current = rawWorkspaceTerminals;
+    return rawWorkspaceTerminals;
+  }, [rawWorkspaceTerminals]);
+
+  const prevAllTerminalsRef = useRef(rawAllTerminals);
+  const allTerminals = useMemo(() => {
+    const prev = prevAllTerminalsRef.current;
+    if (
+      prev.length === rawAllTerminals.length
+      && prev.every((t, i) => t.terminalId === rawAllTerminals[i]?.terminalId && t.status === rawAllTerminals[i]?.status)
+    ) {
+      return prev;
+    }
+    prevAllTerminalsRef.current = rawAllTerminals;
+    return rawAllTerminals;
+  }, [rawAllTerminals]);
   const splitMode = useTerminalStore((s) => s.splitMode);
   const splitRatio = useTerminalStore((s) => s.splitRatio);
   const cycleSplitMode = useTerminalStore((s) => s.cycleSplitMode);
