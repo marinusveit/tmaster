@@ -21,6 +21,7 @@ export const IPC_CHANNELS = {
   assistantGeneratePrompt: 'assistant:generatePrompt',
   assistantExecutePrompt: 'assistant:executePrompt',
   assistantMessage: 'assistant:message',
+  assistantStreamChunk: 'assistant:stream-chunk',
   assistantSuggestion: 'assistant:suggestion',
   notificationShow: 'notification:show',
   notificationDismiss: 'notification:dismiss',

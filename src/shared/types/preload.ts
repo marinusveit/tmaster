@@ -18,7 +18,7 @@ import type {
 import type { TerminalEvent } from './event';
 import type { ListSessionsRequest, ListSessionsResponse } from './session';
 import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from './broker';
-import type { AssistantMessage, PromptDraft, RichSuggestion } from './assistant';
+import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from './assistant';
 import type { AppNotification } from './notification';
 
 export interface TmasterApi {
@@ -43,6 +43,7 @@ export interface TmasterApi {
   generatePrompt: (intent: string) => Promise<PromptDraft>;
   executePrompt: (draft: PromptDraft) => Promise<{ terminalId: string }>;
   onAssistantMessage: (handler: (message: AssistantMessage) => void) => () => void;
+  onAssistantStreamChunk: (handler: (chunk: AssistantStreamChunk) => void) => () => void;
   onSuggestion: (handler: (suggestion: RichSuggestion) => void) => () => void;
   onNotification: (handler: (notification: AppNotification) => void) => () => void;
   dismissNotification: (id: string) => Promise<void>;

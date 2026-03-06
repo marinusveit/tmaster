@@ -7,6 +7,13 @@ export interface AssistantMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  isStreaming?: boolean;
+}
+
+export interface AssistantStreamChunk {
+  messageId: string;
+  text: string;
+  isFinal: boolean;
 }
 
 export interface Suggestion {

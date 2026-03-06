@@ -21,7 +21,7 @@ import type {
 import type { TerminalEvent } from '../shared/types/event';
 import type { ListSessionsRequest, ListSessionsResponse } from '../shared/types/session';
 import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from '../shared/types/broker';
-import type { AssistantMessage, PromptDraft, RichSuggestion } from '../shared/types/assistant';
+import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from '../shared/types/assistant';
 import type { AppNotification } from '../shared/types/notification';
 
 const api: TmasterApi = {
@@ -122,6 +122,14 @@ const api: TmasterApi = {
 
     ipcRenderer.on(IPC_CHANNELS.assistantMessage, listener);
     return () => ipcRenderer.off(IPC_CHANNELS.assistantMessage, listener);
+  },
+  onAssistantStreamChunk: (handler: (chunk: AssistantStreamChunk) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: AssistantStreamChunk) => {
+      handler(payload);
+    };
+
+    ipcRenderer.on(IPC_CHANNELS.assistantStreamChunk, listener);
+    return () => ipcRenderer.off(IPC_CHANNELS.assistantStreamChunk, listener);
   },
   onSuggestion: (handler: (suggestion: RichSuggestion) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: RichSuggestion) => {

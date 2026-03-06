@@ -4,11 +4,13 @@ import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { AssistantMessage, PromptAgentType, PromptDraft } from '../../shared/types/assistant';
 import type { CreateTerminalResponse } from '../../shared/types/terminal';
 import type { ContextBroker } from '../broker/ContextBroker';
+import type { OrchestratorSession } from '../orchestrator/OrchestratorSession';
 import { containsUnsupportedControlCharacters } from '../utils/textSanitization';
 import { isObjectRecord } from '../utils/typeGuards';
 
 interface RegisterAssistantHandlersOptions {
   contextBroker?: ContextBroker;
+  orchestrator?: OrchestratorSession;
   onAssistantMessage: (message: AssistantMessage) => void;
   createTerminal?: (request: { workspaceId?: string; shell?: string }) => CreateTerminalResponse;
   writeTerminal?: (terminalId: string, data: string) => void;
@@ -158,6 +160,13 @@ export const registerAssistantHandlers = (
       throw new Error('Assistant message is empty');
     }
 
+    // Orchestrator-Pfad: Streaming via Claude CLI Session
+    if (options.orchestrator) {
+      options.orchestrator.sendMessage(trimmedContent);
+      return;
+    }
+
+    // Fallback: statisches buildReply()
     let promptContext: string | undefined;
     if (options.contextBroker) {
       const context = options.contextBroker.getContext({ limit: 20 });

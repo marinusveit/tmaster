@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain } from 'electron';
@@ -22,6 +23,9 @@ import { NotificationManager } from './notifications/NotificationManager';
 import { registerNotificationHandlers } from './ipc/registerNotificationHandlers';
 import { OutputRingBuffer, SilenceMonitor, TriageCoordinator, TriageService } from './triage';
 import { mapTriageStatusToEventType } from './triage/mapTriageStatusToEventType';
+import { OrchestratorSession } from './orchestrator/OrchestratorSession';
+import { ORCHESTRATOR_SYSTEM_PROMPT } from './orchestrator/systemPrompt';
+import { writeMcpConfig } from './orchestrator/mcpConfig';
 import {
   listWorkspaces,
   createWorkspace,
@@ -64,6 +68,16 @@ const broadcast = (channel: string, payload: unknown): void => {
 
 const destroyAllTerminals = (): void => {
   terminalManager?.destroyAll();
+};
+
+const resolveMcpServerScriptPath = (): string | undefined => {
+  const appPath = app.getAppPath();
+  const candidates = [
+    path.join(__dirname, '../mcp-server/index.js'),
+    path.join(appPath, 'dist/mcp-server/index.js'),
+  ];
+
+  return candidates.find((candidatePath) => fs.existsSync(candidatePath));
 };
 
 const createMainWindow = async (): Promise<BrowserWindow> => {
@@ -145,6 +159,10 @@ const bootstrap = async (): Promise<void> => {
   const agentTypeByTerminal = new Map<string, string>();
   const latestSessionIdByTerminal = new Map<string, string>();
   let isShuttingDown = false;
+
+  // Orchestrator-Session fuer den Assistenten-Chat
+  let orchestratorSession: OrchestratorSession | null = null;
+  const orchestratorSystemPrompt = ORCHESTRATOR_SYSTEM_PROMPT;
 
   // Triage-Verfügbarkeit VOR Terminal-Erstellung prüfen, damit kein
   // PTY-Output verloren geht während isAvailable() läuft.
@@ -269,6 +287,39 @@ const bootstrap = async (): Promise<void> => {
     logInfo('LLM-Triage deaktiviert: claude CLI nicht gefunden');
   }
 
+  // Orchestrator nutzt die gleiche claude CLI Verfuegbarkeit wie Triage
+  if (triageAvailable) {
+    let mcpConfigPath: string | undefined;
+    try {
+      const mcpServerScript = resolveMcpServerScriptPath();
+      if (mcpServerScript) {
+        mcpConfigPath = writeMcpConfig(app.getPath('userData'), mcpServerScript);
+      } else {
+        logInfo('MCP-Config deaktiviert: mcp-server/index.js nicht gefunden');
+      }
+    } catch (err: unknown) {
+      logError('MCP-Config konnte nicht geschrieben werden', err);
+    }
+
+    orchestratorSession = new OrchestratorSession({
+      systemPrompt: orchestratorSystemPrompt,
+      mcpConfigPath,
+      onStreamChunk: (chunk) => {
+        broadcast(IPC_CHANNELS.assistantStreamChunk, chunk);
+      },
+      onError: (messageId, error) => {
+        broadcast(IPC_CHANNELS.assistantStreamChunk, {
+          messageId,
+          text: `Fehler: ${error}`,
+          isFinal: true,
+        });
+      },
+    });
+    logInfo('Orchestrator-Session aktiviert');
+  } else {
+    logInfo('Orchestrator deaktiviert: claude CLI nicht gefunden (Fallback auf buildReply)');
+  }
+
   terminalManager = new TerminalManager({
     onData: (event) => {
       const redactedData = secretFilter.redact(event.data);
@@ -387,6 +438,7 @@ const bootstrap = async (): Promise<void> => {
   registerBrokerHandlers(ipcMain, contextBroker);
   registerAssistantHandlers(ipcMain, {
     contextBroker,
+    orchestrator: orchestratorSession ?? undefined,
     createTerminal: (request) => {
       if (!terminalManager) {
         throw new Error('Terminal manager is not available');
@@ -449,6 +501,8 @@ const bootstrap = async (): Promise<void> => {
     destroyAllTerminals,
     closeDatabase: () => {
       isShuttingDown = true;
+      orchestratorSession?.dispose();
+      orchestratorSession = null;
       silenceMonitor.dispose();
       outputRingBuffer.clear();
       triageCoordinator?.dispose();
