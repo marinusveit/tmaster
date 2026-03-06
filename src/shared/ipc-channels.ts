@@ -18,6 +18,8 @@ export const IPC_CHANNELS = {
   brokerConflict: 'broker:conflict',
   brokerFileChange: 'broker:fileChange',
   assistantSend: 'assistant:send',
+  assistantGeneratePrompt: 'assistant:generatePrompt',
+  assistantExecutePrompt: 'assistant:executePrompt',
   assistantMessage: 'assistant:message',
   assistantSuggestion: 'assistant:suggestion',
   notificationShow: 'notification:show',

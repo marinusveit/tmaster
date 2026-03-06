@@ -18,7 +18,7 @@ import type {
 import type { TerminalEvent } from './event';
 import type { ListSessionsRequest, ListSessionsResponse } from './session';
 import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from './broker';
-import type { AssistantMessage, RichSuggestion } from './assistant';
+import type { AssistantMessage, PromptDraft, RichSuggestion } from './assistant';
 import type { AppNotification } from './notification';
 
 export interface TmasterApi {
@@ -40,6 +40,8 @@ export interface TmasterApi {
   onConflict: (handler: (conflict: FileConflict) => void) => () => void;
   onFileChange: (handler: (event: FileChangeEvent) => void) => () => void;
   sendAssistantMessage: (content: string) => Promise<void>;
+  generatePrompt: (intent: string) => Promise<PromptDraft>;
+  executePrompt: (draft: PromptDraft) => Promise<{ terminalId: string }>;
   onAssistantMessage: (handler: (message: AssistantMessage) => void) => () => void;
   onSuggestion: (handler: (suggestion: RichSuggestion) => void) => () => void;
   onNotification: (handler: (notification: AppNotification) => void) => () => void;

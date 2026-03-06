@@ -1,5 +1,6 @@
 export type CoachingLevel = 'observe' | 'suggest' | 'coach' | 'act';
 export type SuggestionPriority = 'critical' | 'high' | 'medium' | 'low';
+export type PromptAgentType = 'claude' | 'codex' | 'generic';
 
 export interface AssistantMessage {
   id: string;
@@ -31,4 +32,14 @@ export interface RichSuggestion {
   actions: SuggestionAction[];
   timestamp: number;
   category: 'error' | 'idle' | 'context' | 'conflict' | 'workflow';
+}
+
+export interface PromptDraft {
+  id: string;
+  content: string;
+  context: string;
+  agentType: PromptAgentType;
+  workspaceId: string;
+  timestamp: number;
+  isEdited: boolean;
 }
