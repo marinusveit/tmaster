@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   AssistantMessage,
+  AssistantStreamChunk,
   CoachingLevel,
   PromptAgentType,
   PromptDraft,
@@ -17,6 +18,7 @@ import { useWorkspaceStore } from '@renderer/stores/workspaceStore';
 interface AssistantStoreState {
   isExpanded: boolean;
   messages: AssistantMessage[];
+  lastStreamingMessageId: string | null;
   suggestions: Suggestion[];
   richSuggestions: RichSuggestion[];
   coachingLevel: CoachingLevel;
@@ -43,6 +45,7 @@ interface AssistantStoreActions {
   addRichSuggestion: (suggestion: RichSuggestion) => void;
   removeRichSuggestion: (id: string) => void;
   executeSuggestionAction: (suggestionId: string, action: SuggestionAction) => Promise<void>;
+  handleStreamChunk: (chunk: AssistantStreamChunk) => void;
 }
 
 export type AssistantStore = AssistantStoreState & AssistantStoreActions;
@@ -135,9 +138,33 @@ const removeRichSuggestionFromState = (
   };
 };
 
+const resolveStreamingMessageIndex = (
+  messages: AssistantMessage[],
+  messageId: string,
+  lastStreamingMessageId: string | null,
+): number => {
+  const latestIndex = messages.length - 1;
+  if (
+    lastStreamingMessageId === messageId
+    && latestIndex >= 0
+    && messages[latestIndex]?.id === messageId
+  ) {
+    return latestIndex;
+  }
+
+  for (let index = latestIndex; index >= 0; index -= 1) {
+    if (messages[index]?.id === messageId) {
+      return index;
+    }
+  }
+
+  return -1;
+};
+
 export const useAssistantStore = create<AssistantStore>((set, get) => ({
   isExpanded: false,
   messages: [],
+  lastStreamingMessageId: null,
   suggestions: [],
   richSuggestions: [],
   coachingLevel: 'suggest',
@@ -160,6 +187,7 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
       const capped = next.length > MAX_MESSAGES ? next.slice(-MAX_MESSAGES) : next;
       return {
         messages: capped,
+        lastStreamingMessageId: null,
         isTyping: message.role === 'assistant' ? false : state.isTyping,
       };
     });
@@ -350,7 +378,7 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
   },
 
   clearMessages: () => {
-    set({ messages: [], isTyping: false });
+    set({ messages: [], lastStreamingMessageId: null, isTyping: false });
   },
 
   setSuggestions: (suggestions) => {
@@ -421,5 +449,59 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
     }
 
     set((state) => removeRichSuggestionFromState(state, suggestionId));
+  },
+
+  handleStreamChunk: (chunk) => {
+    set((state) => {
+      const existingIndex = resolveStreamingMessageIndex(
+        state.messages,
+        chunk.messageId,
+        state.lastStreamingMessageId,
+      );
+
+      if (existingIndex === -1) {
+        if (chunk.isFinal && chunk.text.length === 0) {
+          return {
+            isTyping: false,
+            lastStreamingMessageId: null,
+          };
+        }
+
+        // Erster Chunk: neue Nachricht anlegen
+        const newMessage: AssistantMessage = {
+          id: chunk.messageId,
+          role: 'assistant',
+          content: chunk.text,
+          timestamp: Date.now(),
+          isStreaming: !chunk.isFinal,
+        };
+        const next = [...state.messages, newMessage];
+        const capped = next.length > MAX_MESSAGES ? next.slice(-MAX_MESSAGES) : next;
+        return {
+          messages: capped,
+          lastStreamingMessageId: chunk.isFinal ? null : chunk.messageId,
+          isTyping: !chunk.isFinal,
+        };
+      }
+
+      // Folge-Chunk: Text appenden
+      const updated = [...state.messages];
+      const existing = updated[existingIndex];
+      if (!existing) {
+        return state;
+      }
+
+      updated[existingIndex] = {
+        ...existing,
+        content: existing.content + chunk.text,
+        isStreaming: !chunk.isFinal,
+      };
+
+      return {
+        messages: updated,
+        lastStreamingMessageId: chunk.isFinal ? null : chunk.messageId,
+        isTyping: !chunk.isFinal,
+      };
+    });
   },
 }));
