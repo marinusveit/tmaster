@@ -21,12 +21,12 @@ const createMockIpcMain = () => {
     handle: vi.fn((channel: string, handler: HandlerFn) => {
       handlers.set(channel, handler);
     }),
-    invoke: (channel: string, payload: unknown) => {
+    invoke: (channel: string, payload: unknown, senderId = 1) => {
       const handler = handlers.get(channel);
       if (!handler) {
         throw new Error(`No handler for ${channel}`);
       }
-      return handler(null, payload);
+      return handler({ sender: { id: senderId } }, payload);
     },
   };
 };
@@ -114,5 +114,18 @@ describe('registerWorkspaceHandlers', () => {
     createWorkspace(db, 'ws-c', 'C', '/c', Date.now());
 
     expect(() => ipcMain.invoke('workspace:switch', 'ws-b')).not.toThrow();
+  });
+
+  it('liefert senderId an den Workspace-Switch-Callback', () => {
+    db = createTestDb();
+    const ipcMain = createMockIpcMain();
+    const onWorkspaceSwitch = vi.fn();
+    registerWorkspaceHandlers(ipcMain as never, db, onWorkspaceSwitch);
+
+    createWorkspace(db, 'ws-a', 'A', '/a', Date.now());
+
+    ipcMain.invoke('workspace:switch', 'ws-a', 77);
+
+    expect(onWorkspaceSwitch).toHaveBeenCalledWith('ws-a', 77);
   });
 });

@@ -461,35 +461,23 @@ export class McpToolService {
     const sinceMinutes = normalizeMinutes(params.sinceMinutes, DEFAULT_CHANGE_WINDOW_MINUTES);
     const since = Date.now() - (sinceMinutes * 60_000);
 
+    const fileFilter = params.filePath ? 'AND file_path = ?' : '';
+    const bindParams: unknown[] = [since];
+    if (params.filePath) {
+      bindParams.push(params.filePath);
+    }
+    bindParams.push(MAX_LIST_ITEMS);
+
     if (this.hasFileChangesTable) {
-      if (params.filePath) {
-        const rows = this.db
-          .prepare(
-            `SELECT file_path, terminal_id, timestamp, change_type
-             FROM file_changes
-             WHERE timestamp >= ? AND file_path = ?
-             ORDER BY timestamp DESC
-             LIMIT ?`,
-          )
-          .all(since, params.filePath, MAX_LIST_ITEMS) as FileChangeRow[];
-
-        return rows.map((row) => ({
-          filePath: row.file_path,
-          terminalId: row.terminal_id,
-          timestamp: row.timestamp,
-          changeType: toChangeType(row.change_type),
-        }));
-      }
-
       const rows = this.db
         .prepare(
           `SELECT file_path, terminal_id, timestamp, change_type
            FROM file_changes
-           WHERE timestamp >= ?
+           WHERE timestamp >= ? ${fileFilter}
            ORDER BY timestamp DESC
            LIMIT ?`,
         )
-        .all(since, MAX_LIST_ITEMS) as FileChangeRow[];
+        .all(...bindParams) as FileChangeRow[];
 
       return rows.map((row) => ({
         filePath: row.file_path,
@@ -499,38 +487,15 @@ export class McpToolService {
       }));
     }
 
-    if (params.filePath) {
-      const rows = this.db
-        .prepare(
-          `SELECT file_path, terminal_id, locked_at AS timestamp
-           FROM file_locks
-           WHERE locked_at >= ? AND file_path = ?
-           ORDER BY locked_at DESC
-           LIMIT ?`,
-        )
-        .all(since, params.filePath, MAX_LIST_ITEMS) as Array<{
-        file_path: string;
-        terminal_id: string;
-        timestamp: number;
-      }>;
-
-      return rows.map((row) => ({
-        filePath: row.file_path,
-        terminalId: row.terminal_id,
-        timestamp: row.timestamp,
-        changeType: 'modify',
-      }));
-    }
-
     const rows = this.db
       .prepare(
         `SELECT file_path, terminal_id, locked_at AS timestamp
          FROM file_locks
-         WHERE locked_at >= ?
+         WHERE locked_at >= ? ${fileFilter}
          ORDER BY locked_at DESC
          LIMIT ?`,
       )
-      .all(since, MAX_LIST_ITEMS) as Array<{
+      .all(...bindParams) as Array<{
       file_path: string;
       terminal_id: string;
       timestamp: number;

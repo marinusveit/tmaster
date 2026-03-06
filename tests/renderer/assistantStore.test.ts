@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore';
-import type { RichSuggestion } from '@shared/types/assistant';
+import type { PromptDraft, RichSuggestion } from '@shared/types/assistant';
 import { transport } from '@renderer/transport';
 
 vi.mock('@renderer/transport', () => ({
@@ -25,8 +25,23 @@ describe('assistantStore', () => {
       richSuggestions: [],
       coachingLevel: 'suggest',
       isTyping: false,
+      currentDraft: null,
+      isGeneratingDraft: false,
+      isExecutingDraft: false,
     });
   });
+
+  const createDraft = (): PromptDraft => {
+    return {
+      id: 'draft-1',
+      content: 'Fix this bug',
+      context: 'Terminal context',
+      agentType: 'claude',
+      workspaceId: 'ws1',
+      timestamp: Date.now(),
+      isEdited: false,
+    };
+  };
 
   it('addRichSuggestion sortiert nach Priority', () => {
     const store = useAssistantStore.getState();
@@ -152,5 +167,33 @@ describe('assistantStore', () => {
     expect(transport.invoke).toHaveBeenCalledWith('sendAssistantMessage', 'Status?');
     expect(useAssistantStore.getState().messages).toHaveLength(1);
     expect(useAssistantStore.getState().isTyping).toBe(true);
+  });
+
+  it('executeDraft bleibt erfolgreich wenn listTerminals fehlschlaegt', async () => {
+    const store = useAssistantStore.getState();
+    useAssistantStore.setState({ currentDraft: createDraft() });
+
+    vi.mocked(transport.invoke).mockImplementation(
+      ((channel: string) => {
+        if (channel === 'executePrompt') {
+          return Promise.resolve({ terminalId: 't-created' });
+        }
+        if (channel === 'listTerminals') {
+          return Promise.reject(new Error('IPC down'));
+        }
+        return Promise.resolve(undefined);
+      }) as typeof transport.invoke,
+    );
+
+    await store.executeDraft();
+
+    const state = useAssistantStore.getState();
+    expect(state.currentDraft).toBeNull();
+    expect(state.isExecutingDraft).toBe(false);
+    expect(state.messages).toHaveLength(2);
+    expect(state.messages[0]?.content).toContain('Terminal t-created gestartet');
+    expect(state.messages[1]?.content).toContain('konnte aber nicht aktualisiert werden');
+    expect(state.messages.some((message) => message.content.startsWith('Fehler:'))).toBe(false);
+    expect(useTerminalStore.getState().activeTerminalId).toBe('t-created');
   });
 });
