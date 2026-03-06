@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAssistantStore } from '@renderer/stores/assistantStore';
+import { useAssistantStore, isTerminalManagementCommand, isIntentMessage } from '@renderer/stores/assistantStore';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore';
 import type { PromptDraft, RichSuggestion } from '@shared/types/assistant';
@@ -167,6 +167,72 @@ describe('assistantStore', () => {
     expect(transport.invoke).toHaveBeenCalledWith('sendAssistantMessage', 'Status?');
     expect(useAssistantStore.getState().messages).toHaveLength(1);
     expect(useAssistantStore.getState().isTyping).toBe(true);
+  });
+
+  it('sendMessage erstellt ein einfaches Terminal bei Management-Befehl', async () => {
+    vi.mocked(transport.invoke).mockImplementation(
+      ((channel: string) => {
+        if (channel === 'createTerminal') {
+          return Promise.resolve({
+            terminalId: 't-new',
+            label: { prefix: 'T', index: 51 },
+            workspaceId: 'ws1',
+          });
+        }
+        return Promise.resolve(undefined);
+      }) as typeof transport.invoke,
+    );
+
+    const store = useAssistantStore.getState();
+    store.sendMessage('bitte starte ein neues terminal');
+
+    // Warten bis der async-Aufruf abgeschlossen ist
+    await vi.waitFor(() => {
+      expect(useAssistantStore.getState().isTyping).toBe(false);
+    });
+
+    expect(transport.invoke).toHaveBeenCalledWith('createTerminal', { workspaceId: 'ws1' });
+    expect(transport.invoke).not.toHaveBeenCalledWith('generatePrompt', expect.anything());
+
+    const state = useAssistantStore.getState();
+    expect(state.messages).toHaveLength(2);
+    expect(state.messages[1]?.role).toBe('assistant');
+    expect(state.messages[1]?.content).toContain('geöffnet');
+    expect(state.currentDraft).toBeNull();
+
+    expect(useTerminalStore.getState().activeTerminalId).toBe('t-new');
+  });
+
+  describe('isTerminalManagementCommand', () => {
+    it('erkennt deutsche Befehle', () => {
+      expect(isTerminalManagementCommand('bitte starte ein neues terminal')).toBe(true);
+      expect(isTerminalManagementCommand('neues Terminal')).toBe(true);
+      expect(isTerminalManagementCommand('öffne ein neues Terminal')).toBe(true);
+      expect(isTerminalManagementCommand('terminal öffnen')).toBe(true);
+      expect(isTerminalManagementCommand('terminal starten')).toBe(true);
+      expect(isTerminalManagementCommand('terminal erstellen')).toBe(true);
+    });
+
+    it('erkennt englische Befehle', () => {
+      expect(isTerminalManagementCommand('open a new terminal')).toBe(true);
+      expect(isTerminalManagementCommand('create terminal')).toBe(true);
+      expect(isTerminalManagementCommand('new terminal')).toBe(true);
+    });
+
+    it('erkennt keine Agent-Intents', () => {
+      expect(isTerminalManagementCommand('fixe den Bug')).toBe(false);
+      expect(isTerminalManagementCommand('implementiere Feature X')).toBe(false);
+      expect(isTerminalManagementCommand('starte den Build')).toBe(false);
+    });
+  });
+
+  describe('isIntentMessage vs isTerminalManagementCommand Prioritaet', () => {
+    it('terminal-Management hat Vorrang ueber starte-Keyword', () => {
+      const msg = 'bitte starte ein neues terminal';
+      expect(isTerminalManagementCommand(msg)).toBe(true);
+      expect(isIntentMessage(msg)).toBe(true);
+      // isTerminalManagementCommand wird im sendMessage zuerst geprüft
+    });
   });
 
   it('executeDraft bleibt erfolgreich wenn listTerminals fehlschlaegt', async () => {

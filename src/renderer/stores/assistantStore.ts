@@ -9,7 +9,7 @@ import type {
   SuggestionAction,
   SuggestionPriority,
 } from '@shared/types/assistant';
-import type { ListTerminalsResponse } from '@shared/types/terminal';
+import type { CreateTerminalResponse, ListTerminalsResponse } from '@shared/types/terminal';
 import { transport } from '@renderer/transport';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore';
@@ -47,6 +47,8 @@ interface AssistantStoreActions {
 
 export type AssistantStore = AssistantStoreState & AssistantStoreActions;
 
+const MAX_MESSAGES = 500;
+
 const PRIORITY_ORDER: Record<SuggestionPriority, number> = {
   critical: 0,
   high: 1,
@@ -81,6 +83,21 @@ const createAssistantMessage = (content: string): AssistantMessage => {
     content,
     timestamp: Date.now(),
   };
+};
+
+const TERMINAL_MANAGEMENT_PATTERNS = [
+  /(?:ein\s+)?neues\s+terminal/i,
+  /terminal\s+(?:öffnen|starten|erstellen|aufmachen)/i,
+  /(?:open|create|new)\s+(?:a\s+)?terminal/i,
+] as const;
+
+export const isTerminalManagementCommand = (content: string): boolean => {
+  const normalized = content.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return TERMINAL_MANAGEMENT_PATTERNS.some((pattern) => pattern.test(normalized));
 };
 
 const INTENT_KEYWORDS = [
@@ -138,10 +155,14 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
   },
 
   addMessage: (message) => {
-    set((state) => ({
-      messages: [...state.messages, message],
-      isTyping: message.role === 'assistant' ? false : state.isTyping,
-    }));
+    set((state) => {
+      const next = [...state.messages, message];
+      const capped = next.length > MAX_MESSAGES ? next.slice(-MAX_MESSAGES) : next;
+      return {
+        messages: capped,
+        isTyping: message.role === 'assistant' ? false : state.isTyping,
+      };
+    });
   },
 
   sendMessage: (content) => {
@@ -156,6 +177,43 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
       messages: [...state.messages, userMessage],
       isTyping: true,
     }));
+
+    if (isTerminalManagementCommand(trimmed)) {
+      const activeWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
+      void transport
+        .invoke<CreateTerminalResponse>('createTerminal', {
+          workspaceId: activeWorkspaceId ?? undefined,
+        })
+        .then((response) => {
+          const terminalStore = useTerminalStore.getState();
+          terminalStore.addTerminal({
+            terminalId: response.terminalId,
+            label: response.label,
+            workspaceId: response.workspaceId,
+            status: 'active',
+            createdAt: Date.now(),
+          });
+          terminalStore.setActiveTerminal(response.terminalId);
+
+          const displayLabel = `${response.label.prefix}${response.label.index}`;
+          const confirmMessage = createAssistantMessage(
+            `Terminal ${displayLabel} geöffnet.`,
+          );
+          set((state) => ({
+            messages: [...state.messages, confirmMessage],
+            isTyping: false,
+          }));
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : 'Unbekannter Fehler';
+          const errorMessage = createAssistantMessage(`Fehler beim Erstellen: ${message}`);
+          set((state) => ({
+            messages: [...state.messages, errorMessage],
+            isTyping: false,
+          }));
+        });
+      return;
+    }
 
     if (isIntentMessage(trimmed)) {
       void get().generatePrompt(trimmed);
