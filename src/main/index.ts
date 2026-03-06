@@ -154,10 +154,12 @@ const bootstrap = async (): Promise<void> => {
 
   const silenceMonitor = new SilenceMonitor(
     (terminalId, trigger) => {
-      void triageCoordinator?.onSilence(terminalId, trigger);
+      triageCoordinator?.onSilence(terminalId, trigger)
+        .catch((err: unknown) => { logError(`Triage silence failed for ${terminalId}`, err); });
     },
     (terminalId) => {
-      void triageCoordinator?.onOutputBurst(terminalId);
+      triageCoordinator?.onOutputBurst(terminalId)
+        .catch((err: unknown) => { logError(`Triage output burst failed for ${terminalId}`, err); });
     },
     (terminalId) => {
       const session = terminalManager?.getSession(terminalId);
@@ -293,7 +295,8 @@ const bootstrap = async (): Promise<void> => {
         recommendationEngine?.onEvent(extractedEvent);
         notificationManager.onTerminalEvent(extractedEvent);
         broadcast(IPC_CHANNELS.terminalEvent, extractedEvent);
-        void triageCoordinator?.onRegexCandidate(event.terminalId, extractedEvent);
+        triageCoordinator?.onRegexCandidate(event.terminalId, extractedEvent)
+          .catch((err: unknown) => { logError(`Triage regex candidate failed for ${event.terminalId}`, err); });
       }
 
       broadcast(IPC_CHANNELS.terminalData, { ...event, data: redactedData });

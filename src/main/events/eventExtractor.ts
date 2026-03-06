@@ -69,26 +69,32 @@ export class EventExtractor {
 
   public extract(terminalId: string, data: string): TerminalEvent[] {
     const events: TerminalEvent[] = [];
+    const seen = new Set<string>();
     const now = Date.now();
 
     for (const pattern of this.patterns) {
-      const match = data.match(pattern.regex);
-      if (!match) {
-        continue;
+      const globalRegex = new RegExp(pattern.regex.source, pattern.regex.flags.includes('g') ? pattern.regex.flags : `${pattern.regex.flags}g`);
+      for (const match of data.matchAll(globalRegex)) {
+        const rawSummary = pattern.buildSummary
+          ? pattern.buildSummary(match)
+          : (match[0]?.trim() ?? 'Event detected');
+
+        const summary = truncate(rawSummary, MAX_SUMMARY_LENGTH);
+        const dedupKey = `${pattern.type}:${summary}`;
+        if (seen.has(dedupKey)) {
+          continue;
+        }
+        seen.add(dedupKey);
+
+        events.push({
+          terminalId,
+          timestamp: now,
+          type: pattern.type,
+          summary,
+          details: truncate(data, 1000),
+          source: pattern.source,
+        });
       }
-
-      const rawSummary = pattern.buildSummary
-        ? pattern.buildSummary(match)
-        : (match[0]?.trim() ?? 'Event detected');
-
-      events.push({
-        terminalId,
-        timestamp: now,
-        type: pattern.type,
-        summary: truncate(rawSummary, MAX_SUMMARY_LENGTH),
-        details: truncate(data, 1000),
-        source: pattern.source,
-      });
     }
 
     return events;
