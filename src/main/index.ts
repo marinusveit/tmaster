@@ -282,7 +282,7 @@ const bootstrap = async (): Promise<void> => {
 app.whenReady()
   .then(() => bootstrap())
   .catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : 'Unknown startup error';
-    process.emitWarning(`Failed to bootstrap app: ${message}`);
+    // eslint-disable-next-line no-console
+    console.error('Failed to bootstrap app:', error);
     app.exit(1);
   });
