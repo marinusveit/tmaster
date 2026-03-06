@@ -35,6 +35,7 @@ const toWorkspace = (row: {
 export const registerWorkspaceHandlers = (
   ipcMain: IpcMain,
   db: BetterSqlite3.Database,
+  onWorkspaceSwitch?: (workspaceId: string, senderId: number) => void,
 ): void => {
   ipcMain.handle(IPC_CHANNELS.workspaceCreate, (_event, payload: unknown) => {
     if (!isObject(payload)) {
@@ -58,7 +59,7 @@ export const registerWorkspaceHandlers = (
     return { workspaces: rows.map(toWorkspace) };
   });
 
-  ipcMain.handle(IPC_CHANNELS.workspaceSwitch, (_event, payload: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.workspaceSwitch, (event, payload: unknown) => {
     const workspaceId = typeof payload === 'string' ? payload : null;
     if (!workspaceId) {
       throw new Error('Invalid workspace ID');
@@ -68,6 +69,8 @@ export const registerWorkspaceHandlers = (
     if (!row) {
       throw new Error(`Workspace ${workspaceId} not found`);
     }
+
+    onWorkspaceSwitch?.(workspaceId, event.sender.id);
   });
 
   ipcMain.handle(IPC_CHANNELS.workspaceUpdate, (_event, payload: unknown) => {

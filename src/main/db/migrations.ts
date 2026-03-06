@@ -57,6 +57,21 @@ export const runMigrations = (db: BetterSqlite3.Database): void => {
     CREATE INDEX IF NOT EXISTS idx_file_locks_workspace
       ON file_locks(workspace_id);
 
+    CREATE TABLE IF NOT EXISTS file_changes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_path TEXT NOT NULL,
+      terminal_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL,
+      timestamp INTEGER NOT NULL,
+      change_type TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_file_changes_time
+      ON file_changes(timestamp DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_file_changes_path
+      ON file_changes(file_path, timestamp DESC);
+
     CREATE TABLE IF NOT EXISTS notifications (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,

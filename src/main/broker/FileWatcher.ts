@@ -5,6 +5,7 @@ import type BetterSqlite3 from 'better-sqlite3';
 import type { FileChangeEvent, FileConflict } from '../../shared/types/broker';
 import {
   getConflictingFiles,
+  insertFileChange,
   removeAllFileLocksForTerminal,
   upsertFileLock,
 } from '../db/queries';
@@ -65,7 +66,12 @@ const createDefaultWatcher: WatcherFactory = (workspacePath, onFileEvent) => {
     watcher = fs.watch(workspacePath, { recursive: true }, handleFsChange);
   } catch {
     // Linux unterstützt recursive nicht überall; fallback auf Top-Level-Watch.
-    watcher = fs.watch(workspacePath, { recursive: false }, handleFsChange);
+    try {
+      watcher = fs.watch(workspacePath, { recursive: false }, handleFsChange);
+    } catch {
+      // Weder recursive noch non-recursive möglich (Berechtigungen, etc.)
+      return { close: () => {} };
+    }
   }
 
   return {
@@ -105,6 +111,7 @@ export class FileWatcher {
       const timestamp = Date.now();
 
       upsertFileLock(this.db, filePath, terminalId, workspaceId, timestamp);
+      insertFileChange(this.db, filePath, terminalId, workspaceId, timestamp, changeType);
 
       const changeEvent: FileChangeEvent = {
         filePath,
@@ -148,6 +155,7 @@ export class FileWatcher {
     const timestamp = Date.now();
 
     upsertFileLock(this.db, normalizedFilePath, terminalId, workspaceId, timestamp);
+    insertFileChange(this.db, normalizedFilePath, terminalId, workspaceId, timestamp, 'modify');
 
     this.onFileChange({
       filePath: normalizedFilePath,

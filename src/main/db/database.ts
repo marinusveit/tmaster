@@ -2,6 +2,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import type BetterSqlite3 from 'better-sqlite3';
 import { app } from 'electron';
+import { resolveDatabasePath } from '../../shared/constants/paths';
 
 let database: BetterSqlite3.Database | null = null;
 
@@ -14,7 +15,11 @@ export const getDatabase = (dbPath?: string): BetterSqlite3.Database => {
     return database;
   }
 
-  const resolvedPath = dbPath ?? path.join(app.getPath('userData'), 'tmaster.db');
+  const resolvedPath = resolveDatabasePath({
+    dbPath,
+    userDataPath: app.getPath('userData'),
+    pathSeparator: path.sep,
+  });
   database = new Database(resolvedPath);
 
   // WAL-Modus für bessere Concurrent-Read-Performance

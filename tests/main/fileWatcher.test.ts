@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { runMigrations } from '@main/db/migrations';
@@ -21,14 +24,23 @@ interface TestWatcherHandle {
 describe('FileWatcher', () => {
   let db: InstanceType<typeof Database>;
   let handles: TestWatcherHandle[];
+  let tempRootDir: string;
+  let workspacePathOne: string;
+  let workspacePathTwo: string;
 
   beforeEach(() => {
     db = createTestDb();
     handles = [];
+    tempRootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tmaster-filewatcher-'));
+    workspacePathOne = path.join(tempRootDir, 'ws1');
+    workspacePathTwo = path.join(tempRootDir, 'ws2');
+    fs.mkdirSync(workspacePathOne, { recursive: true });
+    fs.mkdirSync(workspacePathTwo, { recursive: true });
   });
 
   afterEach(() => {
     db.close();
+    fs.rmSync(tempRootDir, { recursive: true, force: true });
   });
 
   const createWatcherFactory = () => {
@@ -48,7 +60,7 @@ describe('FileWatcher', () => {
   it('watch und unwatch verwalten Lifecycle', () => {
     const fileWatcher = new FileWatcher(db, vi.fn(), vi.fn(), createWatcherFactory());
 
-    fileWatcher.watch('ws1', '/tmp/ws1');
+    fileWatcher.watch('ws1', workspacePathOne);
     expect(fileWatcher.getWatchedWorkspaceCount()).toBe(1);
 
     fileWatcher.unwatch('ws1');
@@ -96,8 +108,8 @@ describe('FileWatcher', () => {
   it('unwatchAll räumt alle Watcher auf', () => {
     const fileWatcher = new FileWatcher(db, vi.fn(), vi.fn(), createWatcherFactory());
 
-    fileWatcher.watch('ws1', '/tmp/ws1');
-    fileWatcher.watch('ws2', '/tmp/ws2');
+    fileWatcher.watch('ws1', workspacePathOne);
+    fileWatcher.watch('ws2', workspacePathTwo);
     fileWatcher.unwatchAll();
 
     expect(fileWatcher.getWatchedWorkspaceCount()).toBe(0);
@@ -109,13 +121,14 @@ describe('FileWatcher', () => {
     const onConflict = vi.fn();
     const onFileChange = vi.fn();
     const fileWatcher = new FileWatcher(db, onConflict, onFileChange, createWatcherFactory());
+    const watchedFile = path.join(workspacePathOne, 'src', 'a.ts');
 
     // Pfad muss normalisiert uebereinstimmen: registerFileAccess und emit benutzen denselben Pfad
-    fileWatcher.registerFileAccess('/tmp/ws1/src/a.ts', 't1', 'ws1');
-    fileWatcher.watch('ws1', '/tmp/ws1');
+    fileWatcher.registerFileAccess(watchedFile, 't1', 'ws1');
+    fileWatcher.watch('ws1', workspacePathOne);
 
     // Watcher-Callback normalisiert changedFilePath und speichert als watcher:ws1
-    handles[0]?.emit('modify', '/tmp/ws1/src/a.ts');
+    handles[0]?.emit('modify', watchedFile);
 
     expect(onFileChange).toHaveBeenCalled();
     expect(onConflict).toHaveBeenCalled();

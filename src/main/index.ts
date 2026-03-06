@@ -2,6 +2,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
+import type { EventType, TerminalEvent } from '../shared/types/event';
+import { detectAgentType } from '../common/agent/detectAgentType';
 import { TerminalManager } from './terminal/TerminalManager';
 import { registerTerminalHandlers } from './ipc/registerTerminalHandlers';
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers';
@@ -18,6 +20,8 @@ import { RecommendationEngine, type TerminalState } from './assistant/Recommenda
 import { registerAssistantHandlers } from './ipc/registerAssistantHandlers';
 import { NotificationManager } from './notifications/NotificationManager';
 import { registerNotificationHandlers } from './ipc/registerNotificationHandlers';
+import { OutputRingBuffer, SilenceMonitor, TriageCoordinator, TriageService } from './triage';
+import { mapTriageStatusToEventType } from './triage/mapTriageStatusToEventType';
 import {
   listWorkspaces,
   createWorkspace,
@@ -38,6 +42,15 @@ const secretFilter = new SecretFilter({
   customPatterns: [],
 });
 const eventExtractor = new EventExtractor();
+
+const logInfo = (message: string): void => {
+  process.stdout.write(`[tmaster] ${message}\n`);
+};
+
+const logError = (message: string, error: unknown): void => {
+  const details = error instanceof Error ? error.stack ?? error.message : String(error);
+  process.stderr.write(`[tmaster] ${message}\n${details}\n`);
+};
 
 const broadcast = (channel: string, payload: unknown): void => {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -98,6 +111,24 @@ const bootstrap = async (): Promise<void> => {
   } else {
     defaultWorkspaceId = existingWorkspaces[0]?.id ?? randomUUID();
   }
+  const activeWorkspaceBySenderId = new Map<number, string>();
+
+  const setActiveWorkspaceForSender = (workspaceId: string, senderId?: number): void => {
+    if (typeof senderId !== 'number') {
+      return;
+    }
+
+    activeWorkspaceBySenderId.set(senderId, workspaceId);
+  };
+
+  const getActiveWorkspaceForSender = (senderId?: number): string => {
+    if (typeof senderId === 'number') {
+      return activeWorkspaceBySenderId.get(senderId) ?? defaultWorkspaceId;
+    }
+
+    const firstKnownWorkspace = activeWorkspaceBySenderId.values().next().value;
+    return firstKnownWorkspace ?? defaultWorkspaceId;
+  };
 
   const contextBroker = new ContextBroker(db);
   const notificationManager = new NotificationManager(
@@ -107,6 +138,30 @@ const bootstrap = async (): Promise<void> => {
     () => {
       const focusedWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
       focusedWindow?.focus();
+    },
+  );
+  const outputRingBuffer = new OutputRingBuffer();
+  const lastEventTypeByTerminal = new Map<string, EventType>();
+  const agentTypeByTerminal = new Map<string, string>();
+  const latestSessionIdByTerminal = new Map<string, string>();
+  let isShuttingDown = false;
+
+  // Triage-Verfügbarkeit VOR Terminal-Erstellung prüfen, damit kein
+  // PTY-Output verloren geht während isAvailable() läuft.
+  const triageService = new TriageService();
+  const triageAvailable = await triageService.isAvailable();
+  let triageCoordinator: TriageCoordinator | null = null;
+
+  const silenceMonitor = new SilenceMonitor(
+    (terminalId, trigger) => {
+      void triageCoordinator?.onSilence(terminalId, trigger);
+    },
+    (terminalId) => {
+      void triageCoordinator?.onOutputBurst(terminalId);
+    },
+    (terminalId) => {
+      const session = terminalManager?.getSession(terminalId);
+      return session?.status === 'active';
     },
   );
 
@@ -139,6 +194,79 @@ const bootstrap = async (): Promise<void> => {
     },
   );
 
+  // Triage-Coordinator VOR dem TerminalManager erstellen,
+  // damit kein PTY-Output während der Initialisierung verloren geht.
+  if (triageAvailable) {
+    triageCoordinator = new TriageCoordinator(
+      triageService,
+      (terminalId, lines) => outputRingBuffer.getRecent(terminalId, lines),
+      (terminalId) => {
+        const session = terminalManager?.getSession(terminalId);
+        if (!session) {
+          return null;
+        }
+
+        return {
+          status: session.status,
+          runtimeSeconds: Math.max(0, Math.floor((Date.now() - session.createdAt) / 1000)),
+          lastEventType: lastEventTypeByTerminal.get(terminalId),
+        };
+      },
+      (terminalId) => agentTypeByTerminal.get(terminalId) ?? 'generic',
+      (terminalId, result) => {
+        if (isShuttingDown) {
+          return;
+        }
+
+        const triageEventType = mapTriageStatusToEventType(result.status);
+        if (!triageEventType) {
+          return;
+        }
+
+        const triageEvent: TerminalEvent = {
+          terminalId,
+          timestamp: Date.now(),
+          type: triageEventType,
+          summary: result.summary,
+          details: result.detail,
+          source: 'llm_triage',
+        };
+
+        lastEventTypeByTerminal.set(terminalId, triageEvent.type);
+
+        const sessionId = getActiveSessionId(db, terminalId) ?? latestSessionIdByTerminal.get(terminalId);
+        if (sessionId) {
+          insertEvent(
+            db,
+            sessionId,
+            triageEvent.timestamp,
+            triageEvent.type,
+            triageEvent.summary,
+            triageEvent.details ?? null,
+          );
+        }
+
+        contextBroker.onEvent(triageEvent);
+        recommendationEngine?.onEvent(triageEvent);
+        notificationManager.onTerminalEvent(triageEvent);
+        broadcast(IPC_CHANNELS.terminalEvent, triageEvent);
+
+        if (result.status === 'action_required') {
+          const workspaceId = terminalManager?.getSession(terminalId)?.workspaceId;
+          notificationManager.notify({
+            title: `${terminalId} wartet auf Entscheidung`,
+            body: result.detail ?? result.summary,
+            level: result.urgency === 'critical' ? 'error' : 'warning',
+            terminalId,
+            workspaceId,
+          });
+        }
+      },
+    );
+  } else {
+    logInfo('LLM-Triage deaktiviert: claude CLI nicht gefunden');
+  }
+
   terminalManager = new TerminalManager({
     onData: (event) => {
       const redactedData = secretFilter.redact(event.data);
@@ -146,9 +274,17 @@ const bootstrap = async (): Promise<void> => {
         return;
       }
 
+      if (isShuttingDown) {
+        return;
+      }
+
+      outputRingBuffer.append(event.terminalId, redactedData);
+      silenceMonitor.onOutput(event.terminalId);
+
       // Event-Pipeline: Extract -> DB -> broadcast events
       const events = eventExtractor.extract(event.terminalId, redactedData);
       for (const extractedEvent of events) {
+        lastEventTypeByTerminal.set(event.terminalId, extractedEvent.type);
         const sessionId = getActiveSessionId(db, event.terminalId);
         if (sessionId) {
           insertEvent(db, sessionId, extractedEvent.timestamp, extractedEvent.type, extractedEvent.summary, extractedEvent.details ?? null);
@@ -157,13 +293,38 @@ const bootstrap = async (): Promise<void> => {
         recommendationEngine?.onEvent(extractedEvent);
         notificationManager.onTerminalEvent(extractedEvent);
         broadcast(IPC_CHANNELS.terminalEvent, extractedEvent);
+        void triageCoordinator?.onRegexCandidate(event.terminalId, extractedEvent);
       }
 
       broadcast(IPC_CHANNELS.terminalData, { ...event, data: redactedData });
     },
     onExit: (event) => {
-      // Session in DB beenden
-      endSession(db, event.terminalId);
+      const processExitPromise = !isShuttingDown
+        ? triageCoordinator?.onProcessExit(event.terminalId, event.exitCode ?? -1)
+        : undefined;
+      if (processExitPromise) {
+        void processExitPromise
+          .catch((error: unknown) => {
+            if (!isShuttingDown) {
+              logError(`LLM-Triage for exited terminal ${event.terminalId} failed`, error);
+            }
+          })
+          .finally(() => {
+            latestSessionIdByTerminal.delete(event.terminalId);
+          });
+      } else {
+        latestSessionIdByTerminal.delete(event.terminalId);
+      }
+
+      outputRingBuffer.remove(event.terminalId);
+      silenceMonitor.removeTerminal(event.terminalId);
+      lastEventTypeByTerminal.delete(event.terminalId);
+      agentTypeByTerminal.delete(event.terminalId);
+
+      // Session in DB nur beenden solange die Datenbank noch offen ist.
+      if (!isShuttingDown) {
+        endSession(db, event.terminalId);
+      }
       fileWatcher?.releaseTerminalLocks(event.terminalId);
       notificationManager.onTerminalExit(event.terminalId, event.exitCode ?? -1);
       broadcast(IPC_CHANNELS.terminalExit, event);
@@ -198,6 +359,8 @@ const bootstrap = async (): Promise<void> => {
       request.shell ?? null,
       Date.now(),
     );
+    latestSessionIdByTerminal.set(response.terminalId, sessionId);
+    agentTypeByTerminal.set(response.terminalId, detectAgentType(request.shell));
 
     // Label-Counter in DB ist bereits durch TerminalManager hochgezählt,
     // DB-Counter wird beim nächsten Start über setLabelCounter synchronisiert.
@@ -214,11 +377,26 @@ const bootstrap = async (): Promise<void> => {
   };
 
   registerTerminalHandlers(ipcMain, terminalManager);
-  registerWorkspaceHandlers(ipcMain, db);
+  registerWorkspaceHandlers(ipcMain, db, (workspaceId, senderId) => {
+    setActiveWorkspaceForSender(workspaceId, senderId);
+  });
   registerSessionHandlers(ipcMain, db);
   registerBrokerHandlers(ipcMain, contextBroker);
   registerAssistantHandlers(ipcMain, {
     contextBroker,
+    createTerminal: (request) => {
+      if (!terminalManager) {
+        throw new Error('Terminal manager is not available');
+      }
+      return terminalManager.createTerminal(request);
+    },
+    writeTerminal: (terminalId, data) => {
+      if (!terminalManager) {
+        throw new Error('Terminal manager is not available');
+      }
+      terminalManager.writeTerminal(terminalId, data);
+    },
+    getActiveWorkspaceId: (senderId) => getActiveWorkspaceForSender(senderId),
     onAssistantMessage: (message) => {
       broadcast(IPC_CHANNELS.assistantMessage, message);
     },
@@ -226,6 +404,7 @@ const bootstrap = async (): Promise<void> => {
   registerNotificationHandlers(ipcMain, notificationManager);
 
   recommendationEngine.start();
+  silenceMonitor.start();
 
   for (const workspace of listWorkspaces(db)) {
     fileWatcher.watch(workspace.id, workspace.path);
@@ -266,6 +445,15 @@ const bootstrap = async (): Promise<void> => {
     createMainWindow,
     destroyAllTerminals,
     closeDatabase: () => {
+      isShuttingDown = true;
+      silenceMonitor.dispose();
+      outputRingBuffer.clear();
+      triageCoordinator?.dispose();
+      triageCoordinator = null;
+      activeWorkspaceBySenderId.clear();
+      lastEventTypeByTerminal.clear();
+      agentTypeByTerminal.clear();
+      latestSessionIdByTerminal.clear();
       recommendationEngine?.dispose();
       recommendationEngine = null;
       fileWatcher?.unwatchAll();
@@ -282,7 +470,6 @@ const bootstrap = async (): Promise<void> => {
 app.whenReady()
   .then(() => bootstrap())
   .catch((error: unknown) => {
-    // eslint-disable-next-line no-console
-    console.error('Failed to bootstrap app:', error);
+    logError('Failed to bootstrap app', error);
     app.exit(1);
   });

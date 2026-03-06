@@ -96,6 +96,14 @@ export interface FileLockRow {
   locked_at: number;
 }
 
+export interface FileChangeRow {
+  file_path: string;
+  terminal_id: string;
+  workspace_id: string;
+  timestamp: number;
+  change_type: 'create' | 'modify' | 'delete';
+}
+
 export interface NotificationRow {
   id: string;
   title: string;
@@ -296,6 +304,49 @@ export const getConflictingFiles = (
       HAVING COUNT(DISTINCT terminal_id) > 1`,
     )
     .all(workspaceId) as ConflictingFileRow[];
+};
+
+export const insertFileChange = (
+  db: BetterSqlite3.Database,
+  filePath: string,
+  terminalId: string,
+  workspaceId: string,
+  timestamp: number,
+  changeType: 'create' | 'modify' | 'delete',
+): void => {
+  db.prepare(
+    `INSERT INTO file_changes (file_path, terminal_id, workspace_id, timestamp, change_type)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(filePath, terminalId, workspaceId, timestamp, changeType);
+};
+
+export const listRecentFileChanges = (
+  db: BetterSqlite3.Database,
+  since: number,
+  limit: number,
+  filePath?: string,
+): FileChangeRow[] => {
+  if (filePath) {
+    return db
+      .prepare(
+        `SELECT file_path, terminal_id, workspace_id, timestamp, change_type
+         FROM file_changes
+         WHERE timestamp >= ? AND file_path = ?
+         ORDER BY timestamp DESC
+         LIMIT ?`,
+      )
+      .all(since, filePath, limit) as FileChangeRow[];
+  }
+
+  return db
+    .prepare(
+      `SELECT file_path, terminal_id, workspace_id, timestamp, change_type
+       FROM file_changes
+       WHERE timestamp >= ?
+       ORDER BY timestamp DESC
+       LIMIT ?`,
+    )
+    .all(since, limit) as FileChangeRow[];
 };
 
 export const insertNotification = (
