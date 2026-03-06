@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { TerminalSessionInfo } from '@shared/types/terminal';
 import type { Workspace } from '@shared/types/workspace';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
+import { useQuickSwitcherStore } from '@renderer/stores/quickSwitcherStore';
 
 interface KeyboardShortcutHandlers {
   onCreateTerminal: () => void;
@@ -26,6 +27,22 @@ export const useKeyboardShortcuts = ({
 }: KeyboardShortcutHandlers): void => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K → Quick-Switcher öffnen
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        useQuickSwitcherStore.getState().open();
+        return;
+      }
+
+      const quickSwitcherState = useQuickSwitcherStore.getState();
+      if (quickSwitcherState.isOpen) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          quickSwitcherState.close();
+        }
+        return;
+      }
+
       // Ctrl+Shift+T → Neues Terminal
       if (e.ctrlKey && e.shiftKey && e.key === 'T') {
         e.preventDefault();

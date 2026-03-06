@@ -1,18 +1,21 @@
 import { useEffect, useCallback, useMemo } from 'react';
+import type { CSSProperties } from 'react';
+import type { TerminalSessionInfo } from '@shared/types/terminal';
 import { useTerminals } from '@renderer/hooks/useTerminals';
 import { useWorkspaces } from '@renderer/hooks/useWorkspaces';
 import { useKeyboardShortcuts } from '@renderer/hooks/useKeyboardShortcuts';
 import { TerminalView } from '@renderer/components/terminal/TerminalView';
 import { TerminalTabs } from '@renderer/components/terminal/TerminalTabs';
+import { SplitResizer } from '@renderer/components/terminal/SplitResizer';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
 import { AssistantPanel } from '@renderer/components/sidebar/AssistantPanel';
 import { WorkspaceTabs } from '@renderer/components/workspace/WorkspaceTabs';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
+import { QuickSwitcher } from '@renderer/components/common/QuickSwitcher';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
 import { useAssistant } from '@renderer/hooks/useAssistant';
 import type { SplitMode } from '@renderer/stores/terminalStore';
-import type { TerminalSessionInfo } from '@shared/types/terminal';
 
 export const App = (): JSX.Element => {
   const {
@@ -39,9 +42,12 @@ export const App = (): JSX.Element => {
     : getOrderedTerminals();
   const allTerminals = getOrderedTerminals();
   const splitMode = useTerminalStore((s) => s.splitMode);
+  const splitRatio = useTerminalStore((s) => s.splitRatio);
   const cycleSplitMode = useTerminalStore((s) => s.cycleSplitMode);
+  const setSplitRatio = useTerminalStore((s) => s.setSplitRatio);
   const isAssistantExpanded = useAssistantStore((s) => s.isExpanded);
   const toggleAssistant = useAssistantStore((s) => s.toggleExpanded);
+  const addAssistantMessage = useAssistantStore((s) => s.addMessage);
   const activeWorkspaceTerminal = workspaceTerminals.find((terminal) => terminal.terminalId === activeTerminalId) ?? null;
 
   useAssistant();
@@ -71,19 +77,76 @@ export const App = (): JSX.Element => {
     return result;
   }, [splitMode, activeWorkspaceTerminal, workspaceTerminals]);
 
+  const shouldShowResizer = (splitMode === 'horizontal' || splitMode === 'vertical') && visibleTerminals.length > 1;
+  const resizerDirection = splitMode === 'horizontal' ? 'horizontal' : 'vertical';
+  const viewMode: SplitMode = shouldShowResizer
+    ? splitMode
+    : (splitMode === 'horizontal' || splitMode === 'vertical' ? 'single' : splitMode);
+
+  const splitViewStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!shouldShowResizer) {
+      return undefined;
+    }
+
+    if (splitMode === 'horizontal') {
+      return {
+        gridTemplateColumns: `minmax(0, calc((100% - 8px) * ${splitRatio})) 4px minmax(0, calc((100% - 8px) * ${1 - splitRatio}))`,
+        gridTemplateRows: '1fr',
+      };
+    }
+
+    return {
+      gridTemplateColumns: '1fr',
+      gridTemplateRows: `minmax(0, calc((100% - 8px) * ${splitRatio})) 4px minmax(0, calc((100% - 8px) * ${1 - splitRatio}))`,
+    };
+  }, [shouldShowResizer, splitMode, splitRatio]);
+
+  const renderTerminalView = useCallback((terminal: TerminalSessionInfo) => {
+    const isActive = terminal.terminalId === activeTerminalId;
+    return (
+      <div
+        key={terminal.terminalId}
+        className={`terminal-area__view-wrapper${isActive ? ' terminal-area__view-wrapper--active' : ''}`}
+        onMouseDown={() => switchTerminal(terminal.terminalId)}
+      >
+        <TerminalView terminalId={terminal.terminalId} />
+      </div>
+    );
+  }, [activeTerminalId, switchTerminal]);
+
+  const reportAsyncError = useCallback((action: string, error: unknown): void => {
+    const reason = error instanceof Error ? error.message : 'Unbekannter Fehler';
+    addAssistantMessage({
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `Fehler bei "${action}": ${reason}`,
+      timestamp: Date.now(),
+    });
+  }, [addAssistantMessage]);
+
+  const runAsync = useCallback((action: string, operation: () => Promise<void>): void => {
+    void operation().catch((error: unknown) => {
+      reportAsyncError(action, error);
+    });
+  }, [reportAsyncError]);
+
   // Terminals laden wenn Workspace verfügbar
   useEffect(() => {
     if (activeWorkspaceId) {
-      void loadTerminals();
+      runAsync('Terminals laden', async () => {
+        await loadTerminals();
+      });
     }
-  }, [activeWorkspaceId, loadTerminals]);
+  }, [activeWorkspaceId, loadTerminals, runAsync]);
 
   // Erstes Terminal erstellen wenn Workspace da aber keine Terminals
   useEffect(() => {
     if (activeWorkspaceId && workspaceTerminals.length === 0 && allTerminals.length === 0) {
-      void createTerminal({ workspaceId: activeWorkspaceId });
+      runAsync('Erstes Terminal erstellen', async () => {
+        await createTerminal({ workspaceId: activeWorkspaceId });
+      });
     }
-  }, [activeWorkspaceId, workspaceTerminals.length, allTerminals.length, createTerminal]);
+  }, [activeWorkspaceId, workspaceTerminals.length, allTerminals.length, createTerminal, runAsync]);
 
   // Sicherstellen, dass immer ein Terminal im aktiven Workspace ausgewählt ist.
   useEffect(() => {
@@ -105,27 +168,37 @@ export const App = (): JSX.Element => {
 
   const handleCreateTerminal = useCallback(() => {
     if (activeWorkspaceId) {
-      void createTerminal({ workspaceId: activeWorkspaceId });
+      runAsync('Terminal erstellen', async () => {
+        await createTerminal({ workspaceId: activeWorkspaceId });
+      });
     }
-  }, [activeWorkspaceId, createTerminal]);
+  }, [activeWorkspaceId, createTerminal, runAsync]);
 
   const handleCloseTerminal = useCallback((terminalId: string) => {
-    void closeTerminal(terminalId);
-  }, [closeTerminal]);
+    runAsync('Terminal schließen', async () => {
+      await closeTerminal(terminalId);
+    });
+  }, [closeTerminal, runAsync]);
 
   const handleCreateWorkspace = useCallback((name: string, path: string) => {
-    void createWorkspace({ name, path });
-  }, [createWorkspace]);
+    runAsync('Workspace erstellen', async () => {
+      await createWorkspace({ name, path });
+    });
+  }, [createWorkspace, runAsync]);
 
   const handleSwitchWorkspace = useCallback((workspaceId: string) => {
-    void switchWorkspace(workspaceId);
-  }, [switchWorkspace]);
+    runAsync('Workspace wechseln', async () => {
+      await switchWorkspace(workspaceId);
+    });
+  }, [switchWorkspace, runAsync]);
 
   const handleCloseActiveTerminal = useCallback(() => {
     if (activeTerminalId) {
-      void closeTerminal(activeTerminalId);
+      runAsync('Aktives Terminal schließen', async () => {
+        await closeTerminal(activeTerminalId);
+      });
     }
-  }, [activeTerminalId, closeTerminal]);
+  }, [activeTerminalId, closeTerminal, runAsync]);
 
   const handleNextWorkspace = useCallback(() => {
     if (orderedWorkspaces.length <= 1) {
@@ -135,9 +208,28 @@ export const App = (): JSX.Element => {
     const nextIndex = (currentIndex + 1) % orderedWorkspaces.length;
     const next = orderedWorkspaces[nextIndex];
     if (next) {
-      void switchWorkspace(next.id);
+      runAsync('Nächsten Workspace wählen', async () => {
+        await switchWorkspace(next.id);
+      });
     }
-  }, [orderedWorkspaces, activeWorkspaceId, switchWorkspace]);
+  }, [orderedWorkspaces, activeWorkspaceId, switchWorkspace, runAsync]);
+
+  const handleQuickSwitcherSelect = useCallback((terminalId: string) => {
+    const selectedTerminal = allTerminals.find((terminal) => terminal.terminalId === terminalId);
+    if (!selectedTerminal) {
+      return;
+    }
+
+    if (selectedTerminal.workspaceId !== activeWorkspaceId) {
+      runAsync('Terminal über Workspace-Wechsel aktivieren', async () => {
+        await switchWorkspace(selectedTerminal.workspaceId);
+        switchTerminal(terminalId);
+      });
+      return;
+    }
+
+    switchTerminal(terminalId);
+  }, [allTerminals, activeWorkspaceId, switchWorkspace, switchTerminal, runAsync]);
 
   useKeyboardShortcuts({
     onCreateTerminal: handleCreateTerminal,
@@ -173,15 +265,19 @@ export const App = (): JSX.Element => {
             onClose={handleCloseTerminal}
             onCreate={handleCreateTerminal}
           />
-          <div className={`terminal-area__views terminal-area__views--${splitMode}`}>
-            {visibleTerminals.map((terminal) => (
-              <div
-                key={terminal.terminalId}
-                className="terminal-area__view-wrapper"
-              >
-                <TerminalView terminalId={terminal.terminalId} />
-              </div>
-            ))}
+          <div
+            className={`terminal-area__views terminal-area__views--${viewMode}`}
+            style={splitViewStyle}
+          >
+            {shouldShowResizer ? (
+              <>
+                {visibleTerminals[0] ? renderTerminalView(visibleTerminals[0]) : null}
+                <SplitResizer direction={resizerDirection} onResize={setSplitRatio} />
+                {visibleTerminals[1] ? renderTerminalView(visibleTerminals[1]) : null}
+              </>
+            ) : (
+              visibleTerminals.map((terminal) => renderTerminalView(terminal))
+            )}
             {workspaceTerminals.length === 0 && (
               <div className="terminal-area__empty">
                 <div className="terminal-area__empty-icon">&gt;_</div>
@@ -206,6 +302,14 @@ export const App = (): JSX.Element => {
       <StatusBar
         terminals={workspaceTerminals}
         workspaceName={activeWorkspace?.name ?? 'Kein Workspace'}
+        splitMode={splitMode}
+        onCycleSplitMode={cycleSplitMode}
+      />
+      <QuickSwitcher
+        terminals={allTerminals}
+        workspaces={orderedWorkspaces}
+        activeTerminalId={activeTerminalId}
+        onSelectTerminal={handleQuickSwitcherSelect}
       />
     </div>
   );
