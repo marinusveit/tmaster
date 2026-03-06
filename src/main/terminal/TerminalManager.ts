@@ -32,7 +32,7 @@ interface TerminalManagerCallbacks {
 
 export class TerminalManager {
   private readonly sessions = new Map<TerminalId, TerminalSession>();
-  private readonly buffers = new Map<TerminalId, string>();
+  private readonly buffers = new Map<TerminalId, string[]>();
   private readonly flushInterval: NodeJS.Timeout;
   private readonly labelCounters = new Map<WorkspaceId, number>();
   private isDisposed = false;
@@ -79,17 +79,17 @@ export class TerminalManager {
       env: this.buildEnvironment(),
     });
 
-    this.buffers.set(terminalId, '');
+    this.buffers.set(terminalId, []);
 
     // onData-Disposable speichern damit wir den Listener in onExit aufräumen können.
     // Verhindert, dass node-pty's nativer Read-Thread nach dem Prozess-Exit
     // in einen stale JS-Callback schreibt (SIGSEGV).
     const dataDisposable = pty.onData((data) => {
-      if (!this.buffers.has(terminalId)) {
+      const chunks = this.buffers.get(terminalId);
+      if (!chunks) {
         return;
       }
-      const existing = this.buffers.get(terminalId) ?? '';
-      this.buffers.set(terminalId, existing + data);
+      chunks.push(data);
       const currentSession = this.sessions.get(terminalId);
       if (currentSession) {
         currentSession.lastActivity = Date.now();
@@ -118,9 +118,9 @@ export class TerminalManager {
       }
 
       // Restliche Daten im Buffer noch flushen
-      const remainingData = this.buffers.get(terminalId);
-      if (remainingData) {
-        this.callbacks.onData({ terminalId, data: remainingData });
+      const remainingChunks = this.buffers.get(terminalId);
+      if (remainingChunks && remainingChunks.length > 0) {
+        this.callbacks.onData({ terminalId, data: remainingChunks.join('') });
       }
 
       this.buffers.delete(terminalId);
@@ -234,13 +234,14 @@ export class TerminalManager {
   }
 
   private flushBuffers(): void {
-    for (const [terminalId, data] of this.buffers) {
-      if (!data) {
+    for (const [terminalId, chunks] of this.buffers) {
+      if (chunks.length === 0) {
         continue;
       }
 
+      const data = chunks.join('');
+      chunks.length = 0;
       this.callbacks.onData({ terminalId, data });
-      this.buffers.set(terminalId, '');
     }
   }
 

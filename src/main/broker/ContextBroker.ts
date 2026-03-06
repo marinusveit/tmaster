@@ -31,6 +31,7 @@ interface GlobalConflictRow {
 
 const DEFAULT_LIMIT = 100;
 const DEFAULT_HOT_WINDOW_MINUTES = 5;
+const MAX_HOT_EVENTS_PER_WORKSPACE = 500;
 
 const EVENT_PRIORITY: Record<EventType, number> = {
   error: 5,
@@ -135,8 +136,15 @@ export class ContextBroker {
     }
 
     const existing = this.hotEventsByWorkspace.get(workspaceId) ?? [];
-    const next = [...existing, event].filter((item) => item.timestamp >= Date.now() - (30 * 60 * 1000));
-    this.hotEventsByWorkspace.set(workspaceId, next);
+    existing.push(event);
+
+    // Evict alte Events und begrenze Speicherverbrauch
+    const cutoff = Date.now() - (30 * 60 * 1000);
+    const filtered = existing.filter((item) => item.timestamp >= cutoff);
+    const bounded = filtered.length > MAX_HOT_EVENTS_PER_WORKSPACE
+      ? filtered.slice(-MAX_HOT_EVENTS_PER_WORKSPACE)
+      : filtered;
+    this.hotEventsByWorkspace.set(workspaceId, bounded);
   }
 
   public getHotEvents(workspaceId: string, minutes: number = DEFAULT_HOT_WINDOW_MINUTES): TerminalEvent[] {
