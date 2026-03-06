@@ -6,7 +6,7 @@ export type EventType =
   | 'context_warning'
   | 'waiting';
 
-export type EventSource = 'pattern' | 'exit_code' | 'hook';
+export type EventSource = 'pattern' | 'exit_code' | 'hook' | 'llm_triage';
 
 export interface TerminalEvent {
   terminalId: string;
