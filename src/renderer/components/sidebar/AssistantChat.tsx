@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import * as React from 'react';
+import ReactMarkdown from 'react-markdown';
 import type { AssistantMessage, PromptAgentType, PromptDraft } from '@shared/types/assistant';
 import { PromptDraftEditor } from './PromptDraftEditor';
 
@@ -25,12 +26,27 @@ export const AssistantChat = ({
   onExecuteDraft,
   onDiscardDraft,
 }: AssistantChatProps): JSX.Element => {
-  const [input, setInput] = useState('');
-  const endRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = React.useRef<HTMLDivElement>(null);
+  const [input, setInput] = React.useState('');
+  const [shouldAutoScroll, setShouldAutoScroll] = React.useState(true);
+  const endRef = React.useRef<HTMLDivElement>(null);
+  const hasStreamingMessage = messages.some((message) => message.isStreaming);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, isTyping]);
+  const isNearBottom = (element: HTMLDivElement): boolean => {
+    const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    return distanceToBottom <= 48;
+  };
+
+  React.useEffect(() => {
+    if (!shouldAutoScroll) {
+      return;
+    }
+
+    endRef.current?.scrollIntoView({
+      behavior: hasStreamingMessage ? 'smooth' : 'auto',
+      block: 'end',
+    });
+  }, [hasStreamingMessage, isTyping, messages, shouldAutoScroll]);
 
   const send = (): void => {
     const trimmed = input.trim();
@@ -45,7 +61,16 @@ export const AssistantChat = ({
   return (
     <section className="assistant-chat" aria-label="Chat">
       <h3 className="assistant-chat__title">Chat</h3>
-      <div className="assistant-chat__messages">
+      <div
+        ref={messagesContainerRef}
+        className="assistant-chat__messages"
+        onScroll={(event) => {
+          const nextShouldAutoScroll = isNearBottom(event.currentTarget);
+          setShouldAutoScroll((current) => {
+            return current === nextShouldAutoScroll ? current : nextShouldAutoScroll;
+          });
+        }}
+      >
         {messages.length === 0 && !isTyping && (
           <p className="assistant-chat__empty">Frag mich etwas über deine Terminals...</p>
         )}
@@ -53,13 +78,20 @@ export const AssistantChat = ({
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`assistant-chat__message assistant-chat__message--${message.role}`}
+            className={`assistant-chat__message assistant-chat__message--${message.role}${message.isStreaming ? ' assistant-chat__message--streaming' : ''}`}
           >
-            {message.content}
+            {message.role === 'assistant' ? (
+              <div className="assistant-chat__markdown">
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+                {message.isStreaming && <span className="assistant-chat__cursor" aria-hidden="true" />}
+              </div>
+            ) : (
+              message.content
+            )}
           </div>
         ))}
 
-        {isTyping && (
+        {isTyping && !hasStreamingMessage && (
           <div className="assistant-chat__typing" aria-live="polite">
             <span className="assistant-chat__dot" />
             <span className="assistant-chat__dot" />

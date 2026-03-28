@@ -21,6 +21,7 @@ describe('assistantStore', () => {
     useAssistantStore.setState({
       isExpanded: false,
       messages: [],
+      lastStreamingMessageId: null,
       suggestions: [],
       richSuggestions: [],
       coachingLevel: 'suggest',
@@ -167,6 +168,57 @@ describe('assistantStore', () => {
     expect(transport.invoke).toHaveBeenCalledWith('sendAssistantMessage', 'Status?');
     expect(useAssistantStore.getState().messages).toHaveLength(1);
     expect(useAssistantStore.getState().isTyping).toBe(true);
+  });
+
+  it('handleStreamChunk legt eine streaming Nachricht an und finalisiert sie', () => {
+    const store = useAssistantStore.getState();
+
+    store.handleStreamChunk({
+      messageId: 'stream-1',
+      text: 'Hallo',
+      isFinal: false,
+    });
+
+    let state = useAssistantStore.getState();
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toMatchObject({
+      id: 'stream-1',
+      role: 'assistant',
+      content: 'Hallo',
+      isStreaming: true,
+    });
+    expect(state.lastStreamingMessageId).toBe('stream-1');
+    expect(state.isTyping).toBe(true);
+
+    store.handleStreamChunk({
+      messageId: 'stream-1',
+      text: ' Welt',
+      isFinal: true,
+    });
+
+    state = useAssistantStore.getState();
+    expect(state.messages[0]).toMatchObject({
+      content: 'Hallo Welt',
+      isStreaming: false,
+    });
+    expect(state.lastStreamingMessageId).toBeNull();
+    expect(state.isTyping).toBe(false);
+  });
+
+  it('handleStreamChunk ignoriert finalen Leer-Chunk ohne bestehende Nachricht', () => {
+    const store = useAssistantStore.getState();
+    useAssistantStore.setState({ isTyping: true });
+
+    store.handleStreamChunk({
+      messageId: 'stream-empty',
+      text: '',
+      isFinal: true,
+    });
+
+    const state = useAssistantStore.getState();
+    expect(state.messages).toHaveLength(0);
+    expect(state.lastStreamingMessageId).toBeNull();
+    expect(state.isTyping).toBe(false);
   });
 
   it('sendMessage erstellt ein einfaches Terminal bei Management-Befehl', async () => {
