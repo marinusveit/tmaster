@@ -146,4 +146,39 @@ describe('useKeyboardShortcuts (Handler-Logik)', () => {
     fireKey('9', { ctrlKey: true });
     expect(onSwitchTerminal).not.toHaveBeenCalled();
   });
+
+  it('Ctrl+F oeffnet die Terminalsuche', () => {
+    const onOpenSearch = vi.fn();
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        onOpenSearch();
+      }
+    };
+    mockWindow.addEventListener('keydown', handler);
+
+    const event = fireKey('f', { ctrlKey: true });
+
+    expect(onOpenSearch).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('Escape schliesst eine offene Terminalsuche', () => {
+    const onCloseSearch = vi.fn();
+    const isSearchOpen = true;
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSearchOpen) {
+        e.preventDefault();
+        onCloseSearch();
+      }
+    };
+    mockWindow.addEventListener('keydown', handler);
+
+    const event = fireKey('Escape');
+
+    expect(onCloseSearch).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
 });

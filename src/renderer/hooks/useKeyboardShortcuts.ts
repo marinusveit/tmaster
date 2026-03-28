@@ -9,9 +9,12 @@ interface KeyboardShortcutHandlers {
   onCreateTerminal: () => void;
   onCloseTerminal: () => void;
   onSaveTerminalOutput: () => void;
+  onOpenSearch: () => void;
+  onCloseSearch: () => void;
   onSwitchTerminal: (terminalId: string) => void;
   onNextWorkspace: () => void;
   onToggleSplit: () => void;
+  isSearchOpen: boolean;
   terminals: TerminalSessionInfo[];
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
@@ -21,9 +24,12 @@ export const useKeyboardShortcuts = ({
   onCreateTerminal,
   onCloseTerminal,
   onSaveTerminalOutput,
+  onOpenSearch,
+  onCloseSearch,
   onSwitchTerminal,
   onNextWorkspace,
   onToggleSplit,
+  isSearchOpen,
   terminals,
   workspaces,
   activeWorkspaceId,
@@ -43,6 +49,20 @@ export const useKeyboardShortcuts = ({
           e.preventDefault();
           quickSwitcherState.close();
         }
+        return;
+      }
+
+      // Ctrl+F → Suche im aktiven Terminal öffnen
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        onOpenSearch();
+        return;
+      }
+
+      // Escape → Terminalsuche schliessen
+      if (e.key === 'Escape' && isSearchOpen) {
+        e.preventDefault();
+        onCloseSearch();
         return;
       }
 
@@ -113,14 +133,17 @@ export const useKeyboardShortcuts = ({
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [
-    onCreateTerminal,
+    activeWorkspaceId,
+    isSearchOpen,
+    onCloseSearch,
     onCloseTerminal,
+    onCreateTerminal,
+    onNextWorkspace,
+    onOpenSearch,
     onSaveTerminalOutput,
     onSwitchTerminal,
-    onNextWorkspace,
     onToggleSplit,
     terminals,
     workspaces,
-    activeWorkspaceId,
   ]);
 };

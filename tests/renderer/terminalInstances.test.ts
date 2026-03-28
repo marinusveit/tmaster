@@ -5,6 +5,11 @@ const mocks = vi.hoisted(() => {
   const transportInvoke = vi.fn();
   const transportOn = vi.fn(() => vi.fn());
   const mockWebglAddons: MockWebglAddon[] = [];
+  const mockSearchAddons: MockSearchAddon[] = [];
+  const setSearchResults = vi.fn();
+  const searchState = {
+    terminalId: null as string | null,
+  };
   const state = {
     shouldThrowOnWebglCreation: false,
   };
@@ -67,6 +72,28 @@ const mocks = vi.hoisted(() => {
 
   class MockFitAddon {}
 
+  class MockSearchAddon {
+    public readonly clearActiveDecoration = vi.fn();
+    public readonly clearDecorations = vi.fn();
+    public readonly dispose = vi.fn();
+    public readonly findNext = vi.fn(() => true);
+    public readonly findPrevious = vi.fn(() => true);
+    private onDidChangeResultsHandler: ((event: { resultIndex: number; resultCount: number }) => void) | null = null;
+
+    public constructor(public readonly options?: Record<string, unknown>) {
+      mockSearchAddons.push(this);
+    }
+
+    public onDidChangeResults(handler: (event: { resultIndex: number; resultCount: number }) => void): { dispose: () => void } {
+      this.onDidChangeResultsHandler = handler;
+      return { dispose: vi.fn() };
+    }
+
+    public triggerResults(event: { resultIndex: number; resultCount: number }): void {
+      this.onDidChangeResultsHandler?.(event);
+    }
+  }
+
   class MockWebglAddon {
     public readonly dispose = vi.fn();
     private onContextLossHandler: (() => void) | null = null;
@@ -91,10 +118,14 @@ const mocks = vi.hoisted(() => {
 
   return {
     MockFitAddon,
+    MockSearchAddon,
     MockTerminal,
     MockWebglAddon,
     logRendererWarning,
+    mockSearchAddons,
     mockWebglAddons,
+    searchState,
+    setSearchResults,
     state,
     transportInvoke,
     transportOn,
@@ -111,8 +142,21 @@ vi.mock('@xterm/addon-fit', () => ({
   FitAddon: mocks.MockFitAddon,
 }));
 
+vi.mock('xterm-addon-search', () => ({
+  SearchAddon: mocks.MockSearchAddon,
+}));
+
 vi.mock('@xterm/addon-webgl', () => ({
   WebglAddon: mocks.MockWebglAddon,
+}));
+
+vi.mock('@renderer/stores/terminalStore', () => ({
+  useTerminalStore: {
+    getState: () => ({
+      search: mocks.searchState,
+      setSearchResults: mocks.setSearchResults,
+    }),
+  },
 }));
 
 vi.mock('@renderer/transport', () => ({
@@ -127,12 +171,17 @@ vi.mock('@renderer/utils/logger', () => ({
 }));
 
 import {
+  clearTerminalSearch,
+  clearTerminalSearchActiveDecoration,
   destroyTerminalInstance,
   enableTerminalWebgl,
+  findNextTerminalSearchMatch,
+  findPreviousTerminalSearchMatch,
   getOrCreateTerminal,
   hasTerminalInstance,
   refreshTerminalAppearance,
   readTerminalBuffer,
+  updateTerminalSearch,
 } from '@renderer/components/terminal/terminalInstances';
 
 describe('terminalInstances', () => {
@@ -165,7 +214,10 @@ describe('terminalInstances', () => {
     document.documentElement.style.setProperty('--terminal-fg', '#e6e6ec');
     document.documentElement.style.setProperty('--terminal-cursor', '#e8714a');
     document.documentElement.style.setProperty('--terminal-selection', 'rgba(232, 113, 74, 0.22)');
+    mocks.mockSearchAddons.length = 0;
     mocks.mockWebglAddons.length = 0;
+    mocks.searchState.terminalId = null;
+    mocks.setSearchResults.mockReset();
     mocks.state.shouldThrowOnWebglCreation = false;
     mocks.logRendererWarning.mockReset();
     mocks.transportInvoke.mockReset();
@@ -263,5 +315,56 @@ describe('terminalInstances', () => {
       background: '#ffffff',
       foreground: '#111111',
     });
+  });
+
+  it('laedt das Search-Addon und propagiert Ergebnis-Updates an den Store', () => {
+    getOrCreateTerminal('t1');
+    mocks.searchState.terminalId = 't1';
+
+    mocks.mockSearchAddons[0]?.triggerResults({ resultIndex: 1, resultCount: 4 });
+
+    expect(mocks.mockSearchAddons).toHaveLength(1);
+    expect(mocks.setSearchResults).toHaveBeenCalledWith(1, 4);
+  });
+
+  it('aktualisiert die Suche inkrementell mit Highlight-Dekorationen', () => {
+    getOrCreateTerminal('t2');
+    const searchAddon = mocks.mockSearchAddons[0];
+
+    updateTerminalSearch('t2', 'needle', { caseSensitive: true, regex: false });
+
+    expect(searchAddon?.findNext).toHaveBeenCalledWith('needle', expect.objectContaining({
+      caseSensitive: true,
+      regex: false,
+      incremental: true,
+      decorations: expect.any(Object),
+    }));
+  });
+
+  it('navigiert zu vorherigem und naechstem Match', () => {
+    getOrCreateTerminal('t3');
+    const searchAddon = mocks.mockSearchAddons[0];
+
+    findNextTerminalSearchMatch('t3', 'needle', { caseSensitive: false, regex: true });
+    findPreviousTerminalSearchMatch('t3', 'needle', { caseSensitive: false, regex: true });
+
+    expect(searchAddon?.findNext).toHaveBeenCalledWith('needle', expect.objectContaining({
+      regex: true,
+    }));
+    expect(searchAddon?.findPrevious).toHaveBeenCalledWith('needle', expect.objectContaining({
+      regex: true,
+    }));
+  });
+
+  it('raeumt Suchdekorationen explizit auf', () => {
+    getOrCreateTerminal('t4');
+    const searchAddon = mocks.mockSearchAddons[0];
+
+    clearTerminalSearch('t4');
+    clearTerminalSearchActiveDecoration('t4');
+
+    expect(searchAddon?.clearDecorations).toHaveBeenCalledTimes(1);
+    expect(searchAddon?.clearActiveDecoration).toHaveBeenCalledTimes(1);
+    expect(mocks.setSearchResults).toHaveBeenCalledWith(-1, 0);
   });
 });

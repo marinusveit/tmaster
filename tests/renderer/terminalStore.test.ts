@@ -20,6 +20,15 @@ describe('terminalStore', () => {
       activeTerminalId: null,
       splitMode: 'single' as SplitMode,
       splitRatio: 0.5,
+      search: {
+        isOpen: false,
+        terminalId: null,
+        query: '',
+        caseSensitive: false,
+        regex: false,
+        resultIndex: -1,
+        resultCount: 0,
+      },
     });
   });
 
@@ -165,5 +174,56 @@ describe('terminalStore', () => {
 
     store.setSplitMode('vertical');
     expect(useTerminalStore.getState().splitMode).toBe('vertical');
+  });
+
+  it('oeffnet die Suche fuer ein Terminal und setzt den Kontext zurueck', () => {
+    const store = useTerminalStore.getState();
+
+    store.openSearch('t1');
+    store.setSearchQuery('needle');
+    store.setSearchResults(2, 5);
+    store.toggleSearchCaseSensitive();
+    store.openSearch('t2');
+
+    expect(useTerminalStore.getState().search).toEqual({
+      isOpen: true,
+      terminalId: 't2',
+      query: '',
+      caseSensitive: false,
+      regex: false,
+      resultIndex: -1,
+      resultCount: 0,
+    });
+  });
+
+  it('schliesst die Suche wieder komplett', () => {
+    const store = useTerminalStore.getState();
+
+    store.openSearch('t1');
+    store.setSearchQuery('needle');
+    store.closeSearch();
+
+    expect(useTerminalStore.getState().search).toEqual({
+      isOpen: false,
+      terminalId: null,
+      query: '',
+      caseSensitive: false,
+      regex: false,
+      resultIndex: -1,
+      resultCount: 0,
+    });
+  });
+
+  it('setzt Suchzustand zurueck wenn das Such-Terminal entfernt wird', () => {
+    const store = useTerminalStore.getState();
+    const terminal = makeTerminal({ terminalId: 't1' });
+
+    store.addTerminal(terminal);
+    store.openSearch('t1');
+    store.setSearchQuery('needle');
+    store.removeTerminal('t1');
+
+    expect(useTerminalStore.getState().search.isOpen).toBe(false);
+    expect(useTerminalStore.getState().search.terminalId).toBeNull();
   });
 });

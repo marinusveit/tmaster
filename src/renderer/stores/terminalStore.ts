@@ -9,8 +9,28 @@ import {
 } from '@shared/constants/defaults';
 import type { SplitMode } from '@shared/types/uiState';
 
+export interface TerminalSearchState {
+  isOpen: boolean;
+  terminalId: TerminalId | null;
+  query: string;
+  caseSensitive: boolean;
+  regex: boolean;
+  resultIndex: number;
+  resultCount: number;
+}
+
 const SPLIT_MODE_CYCLE: SplitMode[] = ['single', 'horizontal', 'vertical', 'grid'];
 export type { SplitMode } from '@shared/types/uiState';
+
+const createDefaultSearchState = (): TerminalSearchState => ({
+  isOpen: false,
+  terminalId: null,
+  query: '',
+  caseSensitive: false,
+  regex: false,
+  resultIndex: -1,
+  resultCount: 0,
+});
 
 const mergeTerminalWithEphemeralState = (
   incoming: TerminalSessionInfo,
@@ -35,6 +55,7 @@ interface TerminalStoreState {
   activeTerminalId: TerminalId | null;
   splitMode: SplitMode;
   splitRatio: number;
+  search: TerminalSearchState;
 }
 
 interface TerminalStoreActions {
@@ -52,6 +73,12 @@ interface TerminalStoreActions {
   cycleSplitMode: () => void;
   setSplitRatio: (ratio: number) => void;
   resetSplitRatio: () => void;
+  openSearch: (terminalId: TerminalId) => void;
+  closeSearch: () => void;
+  setSearchQuery: (query: string) => void;
+  toggleSearchCaseSensitive: () => void;
+  toggleSearchRegex: () => void;
+  setSearchResults: (resultIndex: number, resultCount: number) => void;
 }
 
 export type TerminalStore = TerminalStoreState & TerminalStoreActions;
@@ -61,6 +88,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
   activeTerminalId: null,
   splitMode: DEFAULT_SPLIT_MODE as SplitMode,
   splitRatio: DEFAULT_SPLIT_RATIO,
+  search: createDefaultSearchState(),
 
   addTerminal: (terminal) => {
     set((state) => {
@@ -78,6 +106,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       return {
         terminals: next,
         activeTerminalId: isActive ? null : state.activeTerminalId,
+        search: state.search.terminalId === terminalId ? createDefaultSearchState() : state.search,
       };
     });
   },
@@ -184,7 +213,12 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     for (const t of terminals) {
       map.set(t.terminalId, mergeTerminalWithEphemeralState(t, get().terminals.get(t.terminalId)));
     }
-    set({ terminals: map });
+    set((state) => ({
+      terminals: map,
+      search: state.search.terminalId && !map.has(state.search.terminalId)
+        ? createDefaultSearchState()
+        : state.search,
+    }));
   },
 
   setSplitMode: (mode) => {
@@ -206,5 +240,68 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
 
   resetSplitRatio: () => {
     set({ splitRatio: DEFAULT_SPLIT_RATIO });
+  },
+
+  openSearch: (terminalId) => {
+    set((state) => {
+      const isSameTerminal = state.search.terminalId === terminalId;
+      if (isSameTerminal) {
+        return {
+          search: {
+            ...state.search,
+            isOpen: true,
+          },
+        };
+      }
+
+      return {
+        search: {
+          ...createDefaultSearchState(),
+          isOpen: true,
+          terminalId,
+        },
+      };
+    });
+  },
+
+  closeSearch: () => {
+    set({ search: createDefaultSearchState() });
+  },
+
+  setSearchQuery: (query) => {
+    set((state) => ({
+      search: {
+        ...state.search,
+        query,
+      },
+    }));
+  },
+
+  toggleSearchCaseSensitive: () => {
+    set((state) => ({
+      search: {
+        ...state.search,
+        caseSensitive: !state.search.caseSensitive,
+      },
+    }));
+  },
+
+  toggleSearchRegex: () => {
+    set((state) => ({
+      search: {
+        ...state.search,
+        regex: !state.search.regex,
+      },
+    }));
+  },
+
+  setSearchResults: (resultIndex, resultCount) => {
+    set((state) => ({
+      search: {
+        ...state.search,
+        resultIndex,
+        resultCount,
+      },
+    }));
   },
 }));

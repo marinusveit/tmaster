@@ -1,4 +1,5 @@
 import { Terminal, type ITheme } from 'xterm';
+import { SearchAddon, type ISearchOptions } from 'xterm-addon-search';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import type {
@@ -8,6 +9,7 @@ import type {
   TerminalExportScope,
 } from '@shared/types/terminal';
 import { transport } from '@renderer/transport';
+import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { logRendererWarning } from '@renderer/utils/logger';
 
 /**
@@ -18,6 +20,7 @@ import { logRendererWarning } from '@renderer/utils/logger';
 export interface CachedTerminal {
   terminal: Terminal;
   fitAddon: FitAddon;
+  searchAddon: SearchAddon;
   webglAddon: WebglAddon | null;
   isWebglSupported: boolean;
   cleanups: (() => void)[];
@@ -25,6 +28,36 @@ export interface CachedTerminal {
 }
 
 const cache = new Map<TerminalId, CachedTerminal>();
+const SEARCH_DECORATIONS: NonNullable<ISearchOptions['decorations']> = {
+  matchBackground: '#3f291d',
+  matchBorder: '#c16a44',
+  matchOverviewRuler: '#a45433',
+  activeMatchBackground: '#e87e4d',
+  activeMatchBorder: '#ffcfb4',
+  activeMatchColorOverviewRuler: '#f6a271',
+};
+
+interface TerminalSearchOptions {
+  caseSensitive: boolean;
+  regex: boolean;
+  incremental?: boolean;
+}
+
+interface SearchResultChangeEvent {
+  resultIndex: number;
+  resultCount: number;
+}
+
+const buildSearchOptions = (options: TerminalSearchOptions): ISearchOptions => ({
+  caseSensitive: options.caseSensitive,
+  regex: options.regex,
+  incremental: options.incremental,
+  decorations: SEARCH_DECORATIONS,
+});
+
+const getCachedTerminal = (terminalId: TerminalId): CachedTerminal | undefined => {
+  return cache.get(terminalId);
+};
 
 const readCssVariable = (name: string, fallback: string): string => {
   if (typeof document === 'undefined') {
@@ -80,6 +113,8 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
 
   const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
+  const searchAddon = new SearchAddon({ highlightLimit: 500 });
+  terminal.loadAddon(searchAddon);
 
   const cleanups: (() => void)[] = [];
 
@@ -109,9 +144,20 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
   });
   cleanups.push(exitCleanup);
 
+  const searchResultsSub = searchAddon.onDidChangeResults((event: SearchResultChangeEvent) => {
+    const searchState = useTerminalStore.getState().search;
+    if (searchState.terminalId !== terminalId) {
+      return;
+    }
+
+    useTerminalStore.getState().setSearchResults(event.resultIndex, event.resultCount);
+  });
+  cleanups.push(() => searchResultsSub.dispose());
+
   const entry: CachedTerminal = {
     terminal,
     fitAddon,
+    searchAddon,
     webglAddon: null,
     isWebglSupported: true,
     cleanups,
@@ -228,4 +274,87 @@ export const readTerminalBuffer = (terminalId: TerminalId, scope: TerminalExport
   }
 
   return trimTrailingEmptyLines(lines).join('\n');
+};
+
+export const updateTerminalSearch = (
+  terminalId: TerminalId,
+  query: string,
+  options: TerminalSearchOptions,
+): boolean => {
+  const entry = getCachedTerminal(terminalId);
+  if (!entry) {
+    return false;
+  }
+
+  if (query.length === 0) {
+    entry.searchAddon.clearDecorations();
+    useTerminalStore.getState().setSearchResults(-1, 0);
+    return false;
+  }
+
+  try {
+    return entry.searchAddon.findNext(query, buildSearchOptions({
+      ...options,
+      incremental: true,
+    }));
+  } catch (error: unknown) {
+    useTerminalStore.getState().setSearchResults(-1, 0);
+    logRendererWarning('Terminal-Suche konnte nicht aktualisiert werden.', error);
+    return false;
+  }
+};
+
+export const findNextTerminalSearchMatch = (
+  terminalId: TerminalId,
+  query: string,
+  options: TerminalSearchOptions,
+): boolean => {
+  const entry = getCachedTerminal(terminalId);
+  if (!entry || query.length === 0) {
+    return false;
+  }
+
+  try {
+    return entry.searchAddon.findNext(query, buildSearchOptions(options));
+  } catch (error: unknown) {
+    logRendererWarning('Naechstes Suchergebnis konnte nicht gefunden werden.', error);
+    return false;
+  }
+};
+
+export const findPreviousTerminalSearchMatch = (
+  terminalId: TerminalId,
+  query: string,
+  options: TerminalSearchOptions,
+): boolean => {
+  const entry = getCachedTerminal(terminalId);
+  if (!entry || query.length === 0) {
+    return false;
+  }
+
+  try {
+    return entry.searchAddon.findPrevious(query, buildSearchOptions(options));
+  } catch (error: unknown) {
+    logRendererWarning('Vorheriges Suchergebnis konnte nicht gefunden werden.', error);
+    return false;
+  }
+};
+
+export const clearTerminalSearch = (terminalId: TerminalId): void => {
+  const entry = getCachedTerminal(terminalId);
+  if (!entry) {
+    return;
+  }
+
+  entry.searchAddon.clearDecorations();
+  useTerminalStore.getState().setSearchResults(-1, 0);
+};
+
+export const clearTerminalSearchActiveDecoration = (terminalId: TerminalId): void => {
+  const entry = getCachedTerminal(terminalId);
+  if (!entry) {
+    return;
+  }
+
+  entry.searchAddon.clearActiveDecoration();
 };

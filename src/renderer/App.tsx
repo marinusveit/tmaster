@@ -4,6 +4,7 @@ import type { TerminalSessionInfo } from '@shared/types/terminal';
 import { useTerminals } from '@renderer/hooks/useTerminals';
 import { useWorkspaces } from '@renderer/hooks/useWorkspaces';
 import { useKeyboardShortcuts } from '@renderer/hooks/useKeyboardShortcuts';
+import { SearchBar } from '@renderer/components/terminal/SearchBar';
 import { TerminalView } from '@renderer/components/terminal/TerminalView';
 import { TerminalTabs } from '@renderer/components/terminal/TerminalTabs';
 import { SplitResizer } from '@renderer/components/terminal/SplitResizer';
@@ -14,7 +15,7 @@ import { AssistantPanel } from '@renderer/components/sidebar/AssistantPanel';
 import { WorkspaceTabs } from '@renderer/components/workspace/WorkspaceTabs';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
 import { QuickSwitcher } from '@renderer/components/common/QuickSwitcher';
-import { getOrCreateTerminal } from '@renderer/components/terminal/terminalInstances';
+import { clearTerminalSearch, getOrCreateTerminal } from '@renderer/components/terminal/terminalInstances';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
 import { useAssistant } from '@renderer/hooks/useAssistant';
@@ -79,9 +80,12 @@ export const App = (): JSX.Element => {
   }, [rawAllTerminals]);
   const splitMode = useTerminalStore((s) => s.splitMode);
   const splitRatio = useTerminalStore((s) => s.splitRatio);
+  const search = useTerminalStore((s) => s.search);
   const cycleSplitMode = useTerminalStore((s) => s.cycleSplitMode);
   const setSplitMode = useTerminalStore((s) => s.setSplitMode);
   const setSplitRatio = useTerminalStore((s) => s.setSplitRatio);
+  const openSearch = useTerminalStore((s) => s.openSearch);
+  const closeSearch = useTerminalStore((s) => s.closeSearch);
   const isAssistantExpanded = useAssistantStore((s) => s.isExpanded);
   const toggleAssistant = useAssistantStore((s) => s.toggleExpanded);
   const addAssistantMessage = useAssistantStore((s) => s.addMessage);
@@ -191,6 +195,18 @@ export const App = (): JSX.Element => {
     }
   }, [activeTerminalId, workspaceTerminals, switchTerminal]);
 
+  useEffect(() => {
+    if (!search.isOpen || !search.terminalId) {
+      return;
+    }
+
+    const isSearchTerminalVisible = visibleTerminals.some((terminal) => terminal.terminalId === search.terminalId);
+    if (!isSearchTerminalVisible) {
+      clearTerminalSearch(search.terminalId);
+      closeSearch();
+    }
+  }, [closeSearch, search.isOpen, search.terminalId, visibleTerminals]);
+
   const handleCreateTerminal = useCallback(() => {
     if (activeWorkspaceId) {
       runAsync('Terminal erstellen', async () => {
@@ -252,11 +268,15 @@ export const App = (): JSX.Element => {
 
   const handleCloseActiveTerminal = useCallback(() => {
     if (activeTerminalId) {
+      if (search.isOpen && search.terminalId === activeTerminalId) {
+        clearTerminalSearch(activeTerminalId);
+        closeSearch();
+      }
       runAsync('Aktives Terminal schließen', async () => {
         await closeTerminal(activeTerminalId);
       });
     }
-  }, [activeTerminalId, closeTerminal, runAsync]);
+  }, [activeTerminalId, closeSearch, closeTerminal, runAsync, search.isOpen, search.terminalId]);
 
   const handleNextWorkspace = useCallback(() => {
     if (orderedWorkspaces.length <= 1) {
@@ -315,14 +335,46 @@ export const App = (): JSX.Element => {
     handleSaveTerminalBuffer(activeTerminalId, 'full');
   }, [activeTerminalId, handleSaveTerminalBuffer]);
 
+  const handleOpenSearch = useCallback(() => {
+    if (!activeTerminalId) {
+      return;
+    }
+
+    if (search.isOpen && search.terminalId && search.terminalId !== activeTerminalId) {
+      clearTerminalSearch(search.terminalId);
+    }
+
+    openSearch(activeTerminalId);
+  }, [activeTerminalId, openSearch, search.isOpen, search.terminalId]);
+
+  const handleCloseSearch = useCallback(() => {
+    if (search.terminalId) {
+      clearTerminalSearch(search.terminalId);
+    }
+    closeSearch();
+    if (activeTerminalId) {
+      focusTerminal(activeTerminalId);
+    }
+  }, [activeTerminalId, closeSearch, focusTerminal, search.terminalId]);
+
   const renderTerminalView = useCallback((terminal: TerminalSessionInfo) => {
     const isActive = terminal.terminalId === activeTerminalId;
+    const isSearchVisible = search.isOpen && search.terminalId === terminal.terminalId;
     return (
       <div
         key={terminal.terminalId}
         className={`terminal-area__view-wrapper${isActive ? ' terminal-area__view-wrapper--active' : ''}`}
         onMouseDown={() => switchTerminal(terminal.terminalId)}
       >
+        {isSearchVisible ? (
+          <SearchBar
+            terminalId={terminal.terminalId}
+            onRequestClose={() => {
+              closeSearch();
+              focusTerminal(terminal.terminalId);
+            }}
+          />
+        ) : null}
         <TerminalView
           onCopyBuffer={handleCopyTerminalBuffer}
           onSaveBuffer={handleSaveTerminalBuffer}
@@ -330,14 +382,27 @@ export const App = (): JSX.Element => {
         />
       </div>
     );
-  }, [activeTerminalId, handleCopyTerminalBuffer, handleSaveTerminalBuffer, switchTerminal]);
+  }, [
+    activeTerminalId,
+    closeSearch,
+    focusTerminal,
+    handleCopyTerminalBuffer,
+    handleSaveTerminalBuffer,
+    search.isOpen,
+    search.terminalId,
+    switchTerminal,
+  ]);
 
   useKeyboardShortcuts({
     onCreateTerminal: handleCreateTerminal,
     onCloseTerminal: handleCloseActiveTerminal,
     onSaveTerminalOutput: handleSaveActiveTerminalOutput,
+    onOpenSearch: handleOpenSearch,
+    onCloseSearch: handleCloseSearch,
     onSwitchTerminal: switchTerminal,
     onNextWorkspace: handleNextWorkspace,
+    onToggleSplit: handleCycleSplitMode,
+    isSearchOpen: search.isOpen,
     onToggleSplit: handleCycleSplitMode,
     terminals: workspaceTerminals,
     workspaces: orderedWorkspaces,
