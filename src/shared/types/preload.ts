@@ -5,6 +5,7 @@ import type {
   ListTerminalsResponse,
   ReorderTerminalsRequest,
   ResizeTerminalRequest,
+  TerminalExportRequest,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalStatusEvent,
@@ -29,6 +30,8 @@ export interface TmasterApi {
   resizeTerminal: (request: ResizeTerminalRequest) => Promise<void>;
   closeTerminal: (request: CloseTerminalRequest) => Promise<void>;
   reorderTerminals: (request: ReorderTerminalsRequest) => Promise<void>;
+  copyTerminalBuffer: (request: TerminalExportRequest) => Promise<void>;
+  saveTerminalBuffer: (request: TerminalExportRequest) => Promise<boolean>;
   listTerminals: () => Promise<ListTerminalsResponse>;
   onTerminalData: (handler: (event: TerminalDataEvent) => void) => () => void;
   onTerminalExit: (handler: (event: TerminalExitEvent) => void) => () => void;

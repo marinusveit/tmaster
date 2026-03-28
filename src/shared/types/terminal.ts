@@ -43,6 +43,14 @@ export interface ReorderTerminalsRequest {
   orderedTerminalIds: TerminalId[];
 }
 
+export type TerminalExportScope = 'full' | 'visible';
+
+export interface TerminalExportRequest {
+  terminalId: TerminalId;
+  content: string;
+  scope: TerminalExportScope;
+}
+
 export interface TerminalDataEvent {
   terminalId: TerminalId;
   data: string;

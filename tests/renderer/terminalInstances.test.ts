@@ -13,15 +13,55 @@ const mocks = vi.hoisted(() => {
     public cols = 80;
     public rows = 24;
     public element: { parentElement: object | null } | null = null;
+    public buffer!: {
+      active: {
+        getLine: (lineIndex: number) => { translateToString: (trimRight: boolean) => string } | undefined;
+        readonly length: number;
+        viewportY: number;
+      };
+    };
     public readonly loadAddon = vi.fn();
     public readonly onData = vi.fn(() => ({ dispose: vi.fn() }));
     public readonly write = vi.fn();
     public readonly dispose = vi.fn();
+    private readonly bufferLines: string[] = [];
 
-    public constructor(public readonly options: Record<string, unknown>) {}
+    public constructor(public readonly options: Record<string, unknown>) {
+      const active = {
+        getLine: (lineIndex: number) => {
+          const content = this.bufferLines[lineIndex];
+          if (content === undefined) {
+            return undefined;
+          }
+
+          return {
+            translateToString: (trimRight: boolean) => {
+              return trimRight ? content.replace(/\s+$/u, '') : content;
+            },
+          };
+        },
+        viewportY: 0,
+      } as {
+        getLine: (lineIndex: number) => { translateToString: (trimRight: boolean) => string } | undefined;
+        readonly length: number;
+        viewportY: number;
+      };
+
+      Object.defineProperty(active, 'length', {
+        get: () => this.bufferLines.length,
+      });
+
+      this.buffer = { active };
+    }
 
     public open(container: object): void {
       this.element = { parentElement: container };
+    }
+
+    public setBuffer(lines: string[], viewportY = 0): void {
+      this.bufferLines.length = 0;
+      this.bufferLines.push(...lines);
+      this.buffer.active.viewportY = viewportY;
     }
   }
 
@@ -92,6 +132,7 @@ import {
   getOrCreateTerminal,
   hasTerminalInstance,
   refreshTerminalAppearance,
+  readTerminalBuffer,
 } from '@renderer/components/terminal/terminalInstances';
 
 describe('terminalInstances', () => {
@@ -138,6 +179,23 @@ describe('terminalInstances', () => {
     expect(terminal.options.scrollback).toBe(5000);
     expect(terminal.options.fontSize).toBe(14);
     expect(terminal.options.fontFamily).toBe('JetBrains Mono');
+  });
+
+  it('liest den kompletten Buffer als ANSI-freien Text aus', () => {
+    const entry = getOrCreateTerminal('t1');
+    const terminal = entry.terminal as unknown as MockTerminal;
+    terminal.setBuffer(['alpha   ', 'beta', '']);
+
+    expect(readTerminalBuffer('t1', 'full')).toBe('alpha\nbeta');
+  });
+
+  it('liest nur den sichtbaren Bereich aus dem Buffer aus', () => {
+    const entry = getOrCreateTerminal('t2');
+    const terminal = entry.terminal as unknown as MockTerminal;
+    terminal.rows = 2;
+    terminal.setBuffer(['zero', 'one', 'two', 'three'], 1);
+
+    expect(readTerminalBuffer('t2', 'visible')).toBe('one\ntwo');
   });
 
   it('aktiviert WebGL nur einmal pro sichtbarer Instanz', () => {

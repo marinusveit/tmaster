@@ -1,7 +1,12 @@
 import { Terminal, type ITheme } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
-import type { TerminalId, TerminalDataEvent, TerminalExitEvent } from '@shared/types/terminal';
+import type {
+  TerminalId,
+  TerminalDataEvent,
+  TerminalExitEvent,
+  TerminalExportScope,
+} from '@shared/types/terminal';
 import { transport } from '@renderer/transport';
 import { logRendererWarning } from '@renderer/utils/logger';
 
@@ -187,4 +192,40 @@ export const refreshTerminalAppearance = (): void => {
   for (const entry of cache.values()) {
     applyTerminalAppearance(entry);
   }
+};
+
+const trimTrailingEmptyLines = (lines: string[]): string[] => {
+  let end = lines.length;
+  while (end > 0 && lines[end - 1] === '') {
+    end -= 1;
+  }
+
+  return lines.slice(0, end);
+};
+
+export const readTerminalBuffer = (terminalId: TerminalId, scope: TerminalExportScope): string => {
+  const entry = cache.get(terminalId);
+  if (!entry) {
+    throw new Error(`Terminal ${terminalId} is not mounted`);
+  }
+
+  const { terminal } = entry;
+  const buffer = terminal.buffer.active;
+  const totalLines = buffer.length;
+  if (totalLines === 0) {
+    return '';
+  }
+
+  const startLine = scope === 'visible' ? Math.max(0, buffer.viewportY) : 0;
+  const endLineExclusive = scope === 'visible'
+    ? Math.min(totalLines, buffer.viewportY + Math.max(1, terminal.rows))
+    : totalLines;
+
+  const lines: string[] = [];
+  for (let lineIndex = startLine; lineIndex < endLineExclusive; lineIndex += 1) {
+    const line = buffer.getLine(lineIndex);
+    lines.push(line?.translateToString(true) ?? '');
+  }
+
+  return trimTrailingEmptyLines(lines).join('\n');
 };

@@ -8,6 +8,7 @@ import { TerminalView } from '@renderer/components/terminal/TerminalView';
 import { TerminalTabs } from '@renderer/components/terminal/TerminalTabs';
 import { SplitResizer } from '@renderer/components/terminal/SplitResizer';
 import { getVisibleTerminals } from '@renderer/components/terminal/visibleTerminals';
+import { copyTerminalBuffer, saveTerminalBuffer } from '@renderer/components/terminal/terminalExport';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
 import { AssistantPanel } from '@renderer/components/sidebar/AssistantPanel';
 import { WorkspaceTabs } from '@renderer/components/workspace/WorkspaceTabs';
@@ -20,6 +21,7 @@ import { useAssistant } from '@renderer/hooks/useAssistant';
 import { usePreferences } from '@renderer/hooks/usePreferences';
 import type { SplitMode } from '@renderer/stores/terminalStore';
 import type { QuickSwitcherItem } from '@renderer/utils/quickSwitcher';
+import type { TerminalExportScope } from '@shared/types/terminal';
 
 export const App = (): JSX.Element => {
   const {
@@ -110,19 +112,6 @@ export const App = (): JSX.Element => {
       gridTemplateRows: `minmax(0, calc((100% - 8px) * ${splitRatio})) 4px minmax(0, calc((100% - 8px) * ${1 - splitRatio}))`,
     };
   }, [shouldShowResizer, splitMode, splitRatio]);
-
-  const renderTerminalView = useCallback((terminal: TerminalSessionInfo) => {
-    const isActive = terminal.terminalId === activeTerminalId;
-    return (
-      <div
-        key={terminal.terminalId}
-        className={`terminal-area__view-wrapper${isActive ? ' terminal-area__view-wrapper--active' : ''}`}
-        onMouseDown={() => switchTerminal(terminal.terminalId)}
-      >
-        <TerminalView terminalId={terminal.terminalId} />
-      </div>
-    );
-  }, [activeTerminalId, switchTerminal]);
 
   const reportAsyncError = useCallback((action: string, error: unknown): void => {
     const reason = error instanceof Error ? error.message : 'Unbekannter Fehler';
@@ -274,9 +263,48 @@ export const App = (): JSX.Element => {
     focusTerminal(item.terminal.terminalId);
   }, [activeWorkspaceId, focusTerminal, focusWorkspaceTab, switchWorkspace, switchTerminal, runAsync]);
 
+  const handleCopyTerminalBuffer = useCallback((terminalId: string, scope: TerminalExportScope) => {
+    const scopeLabel = scope === 'visible' ? 'sichtbaren Bereich kopieren' : 'Scrollback kopieren';
+    runAsync(scopeLabel, async () => {
+      await copyTerminalBuffer(terminalId, scope);
+    });
+  }, [runAsync]);
+
+  const handleSaveTerminalBuffer = useCallback((terminalId: string, scope: TerminalExportScope) => {
+    runAsync('Terminal-Output speichern', async () => {
+      await saveTerminalBuffer(terminalId, scope);
+    });
+  }, [runAsync]);
+
+  const handleSaveActiveTerminalOutput = useCallback(() => {
+    if (!activeTerminalId) {
+      return;
+    }
+
+    handleSaveTerminalBuffer(activeTerminalId, 'full');
+  }, [activeTerminalId, handleSaveTerminalBuffer]);
+
+  const renderTerminalView = useCallback((terminal: TerminalSessionInfo) => {
+    const isActive = terminal.terminalId === activeTerminalId;
+    return (
+      <div
+        key={terminal.terminalId}
+        className={`terminal-area__view-wrapper${isActive ? ' terminal-area__view-wrapper--active' : ''}`}
+        onMouseDown={() => switchTerminal(terminal.terminalId)}
+      >
+        <TerminalView
+          onCopyBuffer={handleCopyTerminalBuffer}
+          onSaveBuffer={handleSaveTerminalBuffer}
+          terminalId={terminal.terminalId}
+        />
+      </div>
+    );
+  }, [activeTerminalId, handleCopyTerminalBuffer, handleSaveTerminalBuffer, switchTerminal]);
+
   useKeyboardShortcuts({
     onCreateTerminal: handleCreateTerminal,
     onCloseTerminal: handleCloseActiveTerminal,
+    onSaveTerminalOutput: handleSaveActiveTerminalOutput,
     onSwitchTerminal: switchTerminal,
     onNextWorkspace: handleNextWorkspace,
     onToggleSplit: cycleSplitMode,

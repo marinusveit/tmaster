@@ -82,6 +82,23 @@ describe('useKeyboardShortcuts (Handler-Logik)', () => {
     expect(event.preventDefault).toHaveBeenCalled();
   });
 
+  it('Ctrl+Shift+S ruft onSaveTerminalOutput auf', () => {
+    const onSaveTerminalOutput = vi.fn();
+
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+        e.preventDefault();
+        onSaveTerminalOutput();
+      }
+    };
+    mockWindow.addEventListener('keydown', handler);
+
+    const event = fireKey('S', { ctrlKey: true, shiftKey: true });
+
+    expect(onSaveTerminalOutput).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
   it('Ctrl+1 wechselt zum Terminal an Position 0', () => {
     const onSwitchTerminal = vi.fn();
     const terminals = [

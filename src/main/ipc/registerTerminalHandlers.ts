@@ -1,10 +1,12 @@
-import type { IpcMain } from 'electron';
+import { writeFile } from 'node:fs/promises';
+import { BrowserWindow, clipboard, dialog, type IpcMain, type IpcMainInvokeEvent } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
   CloseTerminalRequest,
   CreateTerminalRequest,
   ReorderTerminalsRequest,
   ResizeTerminalRequest,
+  TerminalExportRequest,
   WriteTerminalRequest,
 } from '../../shared/types/terminal';
 import type { TerminalManager } from '../terminal/TerminalManager';
@@ -41,6 +43,16 @@ export const registerTerminalHandlers = (ipcMain: IpcMain, terminalManager: Term
   ipcMain.handle(IPC_CHANNELS.terminalReorder, (_event, payload: unknown) => {
     const request = parseReorderRequest(payload);
     terminalManager.reorderTerminals(request);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.terminalCopyBuffer, (_event, payload: unknown) => {
+    const request = parseExportRequest(payload);
+    clipboard.writeText(request.content);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.terminalSaveBuffer, async (event, payload: unknown) => {
+    const request = parseExportRequest(payload);
+    return saveTerminalBuffer(event, terminalManager, request);
   });
 
   ipcMain.handle(IPC_CHANNELS.terminalList, () => {
@@ -140,4 +152,59 @@ const parseReorderRequest = (payload: unknown): ReorderTerminalsRequest => {
     workspaceId,
     orderedTerminalIds: orderedTerminalIds as string[],
   };
+};
+
+const parseExportRequest = (payload: unknown): TerminalExportRequest => {
+  if (!isObject(payload)) {
+    throw new Error('Invalid export payload');
+  }
+
+  const terminalId = asString(payload.terminalId);
+  const content = asString(payload.content);
+  const scope = payload.scope;
+  if (!terminalId || content === null || (scope !== 'full' && scope !== 'visible')) {
+    throw new Error('Invalid export payload');
+  }
+
+  return {
+    terminalId,
+    content,
+    scope,
+  };
+};
+
+const buildExportFilename = (terminalManager: TerminalManager, request: TerminalExportRequest): string => {
+  const session = terminalManager.getSession(request.terminalId);
+  const terminalLabel = session ? `${session.label.prefix}${session.label.index}` : request.terminalId;
+  const scopeSuffix = request.scope === 'visible' ? '-visible' : '';
+  return `${terminalLabel}-output${scopeSuffix}.txt`;
+};
+
+const saveTerminalBuffer = async (
+  event: IpcMainInvokeEvent,
+  terminalManager: TerminalManager,
+  request: TerminalExportRequest,
+): Promise<boolean> => {
+  const browserWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+  const dialogOptions = {
+    defaultPath: buildExportFilename(terminalManager, request),
+    filters: [
+      {
+        name: 'Text',
+        extensions: ['txt'],
+      },
+    ],
+    title: 'Terminal-Output exportieren',
+  };
+
+  const result = browserWindow
+    ? await dialog.showSaveDialog(browserWindow, dialogOptions)
+    : await dialog.showSaveDialog(dialogOptions);
+
+  if (result.canceled || !result.filePath) {
+    return false;
+  }
+
+  await writeFile(result.filePath, request.content, 'utf8');
+  return true;
 };

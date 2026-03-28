@@ -8,6 +8,7 @@ import { isQuickSwitcherShortcut } from '@renderer/utils/quickSwitcher';
 interface KeyboardShortcutHandlers {
   onCreateTerminal: () => void;
   onCloseTerminal: () => void;
+  onSaveTerminalOutput: () => void;
   onSwitchTerminal: (terminalId: string) => void;
   onNextWorkspace: () => void;
   onToggleSplit: () => void;
@@ -19,6 +20,7 @@ interface KeyboardShortcutHandlers {
 export const useKeyboardShortcuts = ({
   onCreateTerminal,
   onCloseTerminal,
+  onSaveTerminalOutput,
   onSwitchTerminal,
   onNextWorkspace,
   onToggleSplit,
@@ -55,6 +57,13 @@ export const useKeyboardShortcuts = ({
       if (e.ctrlKey && e.shiftKey && e.key === 'W') {
         e.preventDefault();
         onCloseTerminal();
+        return;
+      }
+
+      // Ctrl+Shift+S → Terminal-Output als Datei speichern
+      if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+        e.preventDefault();
+        onSaveTerminalOutput();
         return;
       }
 
@@ -103,5 +112,15 @@ export const useKeyboardShortcuts = ({
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onCreateTerminal, onCloseTerminal, onSwitchTerminal, onNextWorkspace, onToggleSplit, terminals, workspaces, activeWorkspaceId]);
+  }, [
+    onCreateTerminal,
+    onCloseTerminal,
+    onSaveTerminalOutput,
+    onSwitchTerminal,
+    onNextWorkspace,
+    onToggleSplit,
+    terminals,
+    workspaces,
+    activeWorkspaceId,
+  ]);
 };

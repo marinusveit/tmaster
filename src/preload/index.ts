@@ -8,6 +8,7 @@ import type {
   ListTerminalsResponse,
   ReorderTerminalsRequest,
   ResizeTerminalRequest,
+  TerminalExportRequest,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalStatusEvent,
@@ -41,6 +42,12 @@ const api: TmasterApi = {
   },
   reorderTerminals: (request: ReorderTerminalsRequest): Promise<void> => {
     return ipcRenderer.invoke(IPC_CHANNELS.terminalReorder, request);
+  },
+  copyTerminalBuffer: (request: TerminalExportRequest): Promise<void> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.terminalCopyBuffer, request);
+  },
+  saveTerminalBuffer: (request: TerminalExportRequest): Promise<boolean> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.terminalSaveBuffer, request);
   },
   listTerminals: (): Promise<ListTerminalsResponse> => {
     return ipcRenderer.invoke(IPC_CHANNELS.terminalList);
