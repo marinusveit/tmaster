@@ -403,7 +403,6 @@ export const App = (): JSX.Element => {
     onNextWorkspace: handleNextWorkspace,
     onToggleSplit: handleCycleSplitMode,
     isSearchOpen: search.isOpen,
-    onToggleSplit: handleCycleSplitMode,
     terminals: workspaceTerminals,
     workspaces: orderedWorkspaces,
     activeWorkspaceId,
