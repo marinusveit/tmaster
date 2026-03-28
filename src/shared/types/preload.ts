@@ -23,6 +23,7 @@ import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from 
 import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from './assistant';
 import type { AppNotification } from './notification';
 import type { GetPreferencesResponse, SetPreferenceRequest } from './preferences';
+import type { SaveUiStateRequest, UiState } from './uiState';
 
 export interface TmasterApi {
   createTerminal: (request: CreateTerminalRequest) => Promise<CreateTerminalResponse>;
@@ -43,6 +44,8 @@ export interface TmasterApi {
   updateWorkspace: (request: UpdateWorkspaceRequest) => Promise<Workspace>;
   getPreferences: () => Promise<GetPreferencesResponse>;
   setPreference: (request: SetPreferenceRequest) => Promise<GetPreferencesResponse>;
+  getUiState: () => Promise<UiState>;
+  saveUiState: (request: SaveUiStateRequest) => Promise<UiState>;
   listSessions: (request: ListSessionsRequest) => Promise<ListSessionsResponse>;
   getContext: (query: ContextQuery) => Promise<ContextResult>;
   onConflict: (handler: (conflict: FileConflict) => void) => () => void;

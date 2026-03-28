@@ -2,12 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain } from 'electron';
+import type BetterSqlite3 from 'better-sqlite3';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { EventType, TerminalEvent } from '../shared/types/event';
 import { detectAgentType } from '../common/agent/detectAgentType';
 import { TerminalManager } from './terminal/TerminalManager';
 import { registerTerminalHandlers } from './ipc/registerTerminalHandlers';
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers';
+import { registerUiStateHandlers } from './ipc/registerUiStateHandlers';
 import { getDatabase, closeDatabase } from './db/database';
 import { runMigrations } from './db/migrations';
 import { registerAppLifecycleHandlers } from './lifecycle/registerAppLifecycleHandlers';
@@ -34,12 +36,15 @@ import {
   createSession,
   endSession,
   getWorkspace,
+  getWindowState,
   insertEvent,
   getActiveSessionId,
   updateSessionDisplayOrders,
+  saveWindowState,
 } from './db/queries';
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+const WINDOW_STATE_SAVE_DELAY_MS = 100;
 let terminalManager: TerminalManager | null = null;
 let recommendationEngine: RecommendationEngine | null = null;
 let fileWatcher: FileWatcher | null = null;
@@ -82,10 +87,13 @@ const resolveMcpServerScriptPath = (): string | undefined => {
   return candidates.find((candidatePath) => fs.existsSync(candidatePath));
 };
 
-const createMainWindow = async (): Promise<BrowserWindow> => {
+const createMainWindow = async (db: BetterSqlite3.Database): Promise<BrowserWindow> => {
+  const persistedWindowState = getWindowState(db);
   const mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: persistedWindowState.width,
+    height: persistedWindowState.height,
+    x: persistedWindowState.x ?? undefined,
+    y: persistedWindowState.y ?? undefined,
     backgroundColor: '#101014',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -95,10 +103,63 @@ const createMainWindow = async (): Promise<BrowserWindow> => {
     },
   });
 
+  let persistTimer: NodeJS.Timeout | null = null;
+
+  const persistWindowState = (): void => {
+    if (mainWindow.isDestroyed() || mainWindow.isMinimized()) {
+      return;
+    }
+
+    const bounds = mainWindow.isMaximized()
+      ? mainWindow.getNormalBounds()
+      : mainWindow.getBounds();
+
+    saveWindowState(db, {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      isMaximized: mainWindow.isMaximized(),
+    });
+  };
+
+  const scheduleWindowStatePersist = (): void => {
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+    }
+
+    persistTimer = setTimeout(() => {
+      persistTimer = null;
+      persistWindowState();
+    }, WINDOW_STATE_SAVE_DELAY_MS);
+  };
+
+  mainWindow.on('move', scheduleWindowStatePersist);
+  mainWindow.on('resize', scheduleWindowStatePersist);
+  mainWindow.on('maximize', persistWindowState);
+  mainWindow.on('unmaximize', persistWindowState);
+  mainWindow.on('close', () => {
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+
+    persistWindowState();
+  });
+
   // Alle PTYs beenden wenn das Fenster geschlossen wird
   mainWindow.on('closed', () => {
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+
     destroyAllTerminals();
   });
+
+  if (persistedWindowState.isMaximized) {
+    mainWindow.maximize();
+  }
 
   if (devServerUrl) {
     await mainWindow.loadURL(devServerUrl);
@@ -456,6 +517,7 @@ const bootstrap = async (): Promise<void> => {
     setActiveWorkspaceForSender(workspaceId, senderId);
   });
   registerPreferenceHandlers(ipcMain, db);
+  registerUiStateHandlers(ipcMain, db);
   registerSessionHandlers(ipcMain, db);
   registerBrokerHandlers(ipcMain, contextBroker);
   registerAssistantHandlers(ipcMain, {
@@ -519,7 +581,7 @@ const bootstrap = async (): Promise<void> => {
     app: lifecycleApp,
     isDarwin: process.platform === 'darwin',
     getWindowCount: () => BrowserWindow.getAllWindows().length,
-    createMainWindow,
+    createMainWindow: () => createMainWindow(db),
     destroyAllTerminals,
     closeDatabase: () => {
       isShuttingDown = true;
@@ -543,7 +605,7 @@ const bootstrap = async (): Promise<void> => {
     },
   });
 
-  await createMainWindow();
+  await createMainWindow(db);
 };
 
 app.whenReady()

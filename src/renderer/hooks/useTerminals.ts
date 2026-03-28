@@ -12,6 +12,7 @@ import type {
   TerminalStatusEvent,
 } from '@shared/types/terminal';
 import type { TerminalEvent } from '@shared/types/event';
+import type { UiState } from '@shared/types/uiState';
 
 const WAITING_OUTPUT_REGEX = /(?:waiting\s+for\s+input|⏳|\[[Yy]\/[Nn]\]|\[[Yy]es\/[Nn]o\]|\([Yy]\/[Nn]\)|\(yes\/no\)|press\s+enter|hit\s+enter|confirm|continue\?)/i;
 
@@ -83,17 +84,30 @@ export const useTerminals = () => {
       createdAt: Date.now(),
     });
     setActiveTerminal(response.terminalId);
+    await transport.invoke<UiState>('saveUiState', {
+      activeTerminalId: response.terminalId,
+    });
     return response;
   }, [addTerminal, setActiveTerminal]);
 
   const closeTerminal = useCallback(async (terminalId: string): Promise<void> => {
+    const isActiveTerminal = useTerminalStore.getState().activeTerminalId === terminalId;
     destroyTerminalInstance(terminalId);
     await transport.invoke<void>('closeTerminal', { terminalId });
     removeTerminal(terminalId);
+
+    if (isActiveTerminal) {
+      await transport.invoke<UiState>('saveUiState', {
+        activeTerminalId: null,
+      });
+    }
   }, [removeTerminal]);
 
   const switchTerminal = useCallback((terminalId: string): void => {
     setActiveTerminal(terminalId);
+    void transport.invoke<UiState>('saveUiState', {
+      activeTerminalId: terminalId,
+    });
   }, [setActiveTerminal]);
 
   const reorderTerminalTabs = useCallback(async (request: ReorderTerminalsRequest): Promise<void> => {
@@ -111,7 +125,28 @@ export const useTerminals = () => {
   const loadTerminals = useCallback(async (): Promise<void> => {
     const response = await transport.invoke<ListTerminalsResponse>('listTerminals');
     setTerminals(response.terminals);
-  }, [setTerminals]);
+
+    const currentActiveTerminalId = useTerminalStore.getState().activeTerminalId;
+    if (
+      currentActiveTerminalId
+      && response.terminals.some((terminal) => terminal.terminalId === currentActiveTerminalId)
+    ) {
+      return;
+    }
+
+    const uiState = await transport.invoke<UiState>('getUiState');
+    const restoredTerminalId = response.terminals.find(
+      (terminal) => terminal.terminalId === uiState.activeTerminalId,
+    )?.terminalId ?? null;
+
+    setActiveTerminal(restoredTerminalId);
+
+    if (restoredTerminalId === null && uiState.activeTerminalId !== null) {
+      await transport.invoke<UiState>('saveUiState', {
+        activeTerminalId: null,
+      });
+    }
+  }, [setActiveTerminal, setTerminals]);
 
   return {
     terminals,

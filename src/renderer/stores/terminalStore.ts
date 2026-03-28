@@ -1,13 +1,16 @@
 import { create } from 'zustand';
 import type { TerminalId, TerminalSessionInfo, TerminalStatus } from '@shared/types/terminal';
 import type { WorkspaceId } from '@shared/types/workspace';
-
-export type SplitMode = 'single' | 'horizontal' | 'vertical' | 'grid';
+import {
+  DEFAULT_SPLIT_MODE,
+  DEFAULT_SPLIT_RATIO,
+  MAX_SPLIT_RATIO,
+  MIN_SPLIT_RATIO,
+} from '@shared/constants/defaults';
+import type { SplitMode } from '@shared/types/uiState';
 
 const SPLIT_MODE_CYCLE: SplitMode[] = ['single', 'horizontal', 'vertical', 'grid'];
-const DEFAULT_SPLIT_RATIO = 0.5;
-const MIN_SPLIT_RATIO = 0.2;
-const MAX_SPLIT_RATIO = 0.8;
+export type { SplitMode } from '@shared/types/uiState';
 
 const mergeTerminalWithEphemeralState = (
   incoming: TerminalSessionInfo,
@@ -56,7 +59,7 @@ export type TerminalStore = TerminalStoreState & TerminalStoreActions;
 export const useTerminalStore = create<TerminalStore>((set, get) => ({
   terminals: new Map(),
   activeTerminalId: null,
-  splitMode: 'single' as SplitMode,
+  splitMode: DEFAULT_SPLIT_MODE as SplitMode,
   splitRatio: DEFAULT_SPLIT_RATIO,
 
   addTerminal: (terminal) => {

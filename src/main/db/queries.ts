@@ -1,4 +1,13 @@
 import type BetterSqlite3 from 'better-sqlite3';
+import {
+  DEFAULT_SPLIT_MODE,
+  DEFAULT_SPLIT_RATIO,
+  DEFAULT_WINDOW_HEIGHT,
+  DEFAULT_WINDOW_WIDTH,
+  MAX_SPLIT_RATIO,
+  MIN_SPLIT_RATIO,
+} from '../../shared/constants/defaults';
+import type { SaveUiStateRequest, SplitMode, UiState, WindowState } from '../../shared/types/uiState';
 
 // --- Workspace Queries ---
 
@@ -9,6 +18,69 @@ interface WorkspaceRow {
   next_terminal_index: number;
   created_at: number;
 }
+
+interface WindowStateRow {
+  window_key: string;
+  x: number | null;
+  y: number | null;
+  width: number;
+  height: number;
+  is_maximized: number;
+}
+
+interface UiStateRow {
+  state_key: string;
+  active_workspace_id: string | null;
+  active_terminal_id: string | null;
+  split_mode: SplitMode;
+  split_ratio: number;
+  updated_at: number;
+}
+
+const MAIN_WINDOW_KEY = 'main';
+const MAIN_UI_STATE_KEY = 'main';
+
+const clampSplitRatio = (ratio: number): number => {
+  return Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));
+};
+
+const toWindowState = (row?: WindowStateRow): WindowState => {
+  if (!row) {
+    return {
+      x: null,
+      y: null,
+      width: DEFAULT_WINDOW_WIDTH,
+      height: DEFAULT_WINDOW_HEIGHT,
+      isMaximized: false,
+    };
+  }
+
+  return {
+    x: row.x,
+    y: row.y,
+    width: row.width,
+    height: row.height,
+    isMaximized: row.is_maximized === 1,
+  };
+};
+
+const toUiState = (row?: UiStateRow): UiState => {
+  if (!row) {
+    return {
+      activeWorkspaceId: null,
+      activeTerminalId: null,
+      splitMode: DEFAULT_SPLIT_MODE,
+      splitRatio: DEFAULT_SPLIT_RATIO,
+    };
+  }
+
+  return {
+    activeWorkspaceId: row.active_workspace_id,
+    activeTerminalId: row.active_terminal_id,
+    splitMode: row.split_mode,
+    splitRatio: clampSplitRatio(row.split_ratio),
+  };
+};
 
 export const createWorkspace = (
   db: BetterSqlite3.Database,
@@ -44,6 +116,92 @@ export const updateWorkspace = (
   if (updates.path !== undefined) {
     db.prepare('UPDATE workspaces SET path = ? WHERE id = ?').run(updates.path, id);
   }
+};
+
+export const getWindowState = (db: BetterSqlite3.Database): WindowState => {
+  const row = db
+    .prepare('SELECT * FROM window_state WHERE window_key = ?')
+    .get(MAIN_WINDOW_KEY) as WindowStateRow | undefined;
+
+  return toWindowState(row);
+};
+
+export const saveWindowState = (
+  db: BetterSqlite3.Database,
+  state: WindowState,
+): WindowState => {
+  db.prepare(
+    `INSERT INTO window_state (window_key, x, y, width, height, is_maximized)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(window_key) DO UPDATE SET
+       x = excluded.x,
+       y = excluded.y,
+       width = excluded.width,
+       height = excluded.height,
+       is_maximized = excluded.is_maximized`,
+  ).run(
+    MAIN_WINDOW_KEY,
+    state.x,
+    state.y,
+    state.width,
+    state.height,
+    state.isMaximized ? 1 : 0,
+  );
+
+  return getWindowState(db);
+};
+
+export const getUiState = (db: BetterSqlite3.Database): UiState => {
+  const row = db
+    .prepare('SELECT * FROM ui_state WHERE state_key = ?')
+    .get(MAIN_UI_STATE_KEY) as UiStateRow | undefined;
+
+  return toUiState(row);
+};
+
+export const saveUiState = (
+  db: BetterSqlite3.Database,
+  request: SaveUiStateRequest,
+): UiState => {
+  const currentState = getUiState(db);
+  const nextState: UiState = {
+    activeWorkspaceId: request.activeWorkspaceId === undefined
+      ? currentState.activeWorkspaceId
+      : request.activeWorkspaceId,
+    activeTerminalId: request.activeTerminalId === undefined
+      ? currentState.activeTerminalId
+      : request.activeTerminalId,
+    splitMode: request.splitMode ?? currentState.splitMode,
+    splitRatio: request.splitRatio === undefined
+      ? currentState.splitRatio
+      : clampSplitRatio(request.splitRatio),
+  };
+
+  db.prepare(
+    `INSERT INTO ui_state (
+      state_key,
+      active_workspace_id,
+      active_terminal_id,
+      split_mode,
+      split_ratio,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(state_key) DO UPDATE SET
+      active_workspace_id = excluded.active_workspace_id,
+      active_terminal_id = excluded.active_terminal_id,
+      split_mode = excluded.split_mode,
+      split_ratio = excluded.split_ratio,
+      updated_at = excluded.updated_at`,
+  ).run(
+    MAIN_UI_STATE_KEY,
+    nextState.activeWorkspaceId,
+    nextState.activeTerminalId,
+    nextState.splitMode,
+    nextState.splitRatio,
+    Date.now(),
+  );
+
+  return getUiState(db);
 };
 
 /**

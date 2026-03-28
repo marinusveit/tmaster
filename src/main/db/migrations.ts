@@ -101,6 +101,24 @@ export const runMigrations = (db: BetterSqlite3.Database): void => {
 
     CREATE INDEX IF NOT EXISTS idx_file_locks_file_terminal
       ON file_locks(file_path, terminal_id);
+
+    CREATE TABLE IF NOT EXISTS window_state (
+      window_key TEXT PRIMARY KEY,
+      x INTEGER,
+      y INTEGER,
+      width INTEGER NOT NULL,
+      height INTEGER NOT NULL,
+      is_maximized INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS ui_state (
+      state_key TEXT PRIMARY KEY,
+      active_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
+      active_terminal_id TEXT,
+      split_mode TEXT NOT NULL DEFAULT 'single',
+      split_ratio REAL NOT NULL DEFAULT 0.5,
+      updated_at INTEGER NOT NULL
+    );
   `);
 
   const sessionColumns = db

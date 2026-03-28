@@ -26,6 +26,7 @@ import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from 
 import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from '../shared/types/assistant';
 import type { AppNotification } from '../shared/types/notification';
 import type { GetPreferencesResponse, SetPreferenceRequest } from '../shared/types/preferences';
+import type { SaveUiStateRequest, UiState } from '../shared/types/uiState';
 
 const api: TmasterApi = {
   createTerminal: (request: CreateTerminalRequest): Promise<CreateTerminalResponse> => {
@@ -101,6 +102,12 @@ const api: TmasterApi = {
   },
   setPreference: (request: SetPreferenceRequest): Promise<GetPreferencesResponse> => {
     return ipcRenderer.invoke(IPC_CHANNELS.preferencesSet, request);
+  },
+  getUiState: (): Promise<UiState> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.uiStateGet);
+  },
+  saveUiState: (request: SaveUiStateRequest): Promise<UiState> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.uiStateSave, request);
   },
   listSessions: (request: ListSessionsRequest): Promise<ListSessionsResponse> => {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionList, request);

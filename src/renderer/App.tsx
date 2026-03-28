@@ -20,8 +20,10 @@ import { useAssistantStore } from '@renderer/stores/assistantStore';
 import { useAssistant } from '@renderer/hooks/useAssistant';
 import { usePreferences } from '@renderer/hooks/usePreferences';
 import type { SplitMode } from '@renderer/stores/terminalStore';
+import { transport } from '@renderer/transport';
 import type { QuickSwitcherItem } from '@renderer/utils/quickSwitcher';
 import type { TerminalExportScope } from '@shared/types/terminal';
+import type { UiState } from '@shared/types/uiState';
 
 export const App = (): JSX.Element => {
   const {
@@ -78,6 +80,7 @@ export const App = (): JSX.Element => {
   const splitMode = useTerminalStore((s) => s.splitMode);
   const splitRatio = useTerminalStore((s) => s.splitRatio);
   const cycleSplitMode = useTerminalStore((s) => s.cycleSplitMode);
+  const setSplitMode = useTerminalStore((s) => s.setSplitMode);
   const setSplitRatio = useTerminalStore((s) => s.setSplitRatio);
   const isAssistantExpanded = useAssistantStore((s) => s.isExpanded);
   const toggleAssistant = useAssistantStore((s) => s.toggleExpanded);
@@ -128,6 +131,14 @@ export const App = (): JSX.Element => {
       reportAsyncError(action, error);
     });
   }, [reportAsyncError]);
+
+  useEffect(() => {
+    runAsync('Persistiertes Layout laden', async () => {
+      const uiState = await transport.invoke<UiState>('getUiState');
+      setSplitMode(uiState.splitMode);
+      setSplitRatio(uiState.splitRatio);
+    });
+  }, [runAsync, setSplitMode, setSplitRatio]);
 
   const focusWorkspaceTab = useCallback(() => {
     requestAnimationFrame(() => {
@@ -187,6 +198,26 @@ export const App = (): JSX.Element => {
       });
     }
   }, [activeWorkspaceId, createTerminal, runAsync]);
+
+  const handleCycleSplitMode = useCallback(() => {
+    cycleSplitMode();
+    const nextSplitMode = useTerminalStore.getState().splitMode;
+    runAsync('Split-Modus speichern', async () => {
+      await transport.invoke<UiState>('saveUiState', {
+        splitMode: nextSplitMode,
+      });
+    });
+  }, [cycleSplitMode, runAsync]);
+
+  const handleSetSplitRatio = useCallback((ratio: number) => {
+    setSplitRatio(ratio);
+    const nextSplitRatio = useTerminalStore.getState().splitRatio;
+    runAsync('Split-Verhaeltnis speichern', async () => {
+      await transport.invoke<UiState>('saveUiState', {
+        splitRatio: nextSplitRatio,
+      });
+    });
+  }, [runAsync, setSplitRatio]);
 
   const handleCloseTerminal = useCallback((terminalId: string) => {
     runAsync('Terminal schließen', async () => {
@@ -307,7 +338,7 @@ export const App = (): JSX.Element => {
     onSaveTerminalOutput: handleSaveActiveTerminalOutput,
     onSwitchTerminal: switchTerminal,
     onNextWorkspace: handleNextWorkspace,
-    onToggleSplit: cycleSplitMode,
+    onToggleSplit: handleCycleSplitMode,
     terminals: workspaceTerminals,
     workspaces: orderedWorkspaces,
     activeWorkspaceId,
@@ -344,7 +375,7 @@ export const App = (): JSX.Element => {
             {shouldShowResizer ? (
               <>
                 {visibleTerminals[0] ? renderTerminalView(visibleTerminals[0]) : null}
-                <SplitResizer direction={resizerDirection} onResize={setSplitRatio} />
+                <SplitResizer direction={resizerDirection} onResize={handleSetSplitRatio} />
                 {visibleTerminals[1] ? renderTerminalView(visibleTerminals[1]) : null}
               </>
             ) : (
@@ -375,7 +406,7 @@ export const App = (): JSX.Element => {
         terminals={workspaceTerminals}
         workspaceName={activeWorkspace?.name ?? 'Kein Workspace'}
         splitMode={splitMode}
-        onCycleSplitMode={cycleSplitMode}
+        onCycleSplitMode={handleCycleSplitMode}
       />
       <QuickSwitcher
         terminals={allTerminals}

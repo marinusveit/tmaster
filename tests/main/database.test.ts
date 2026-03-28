@@ -26,6 +26,10 @@ import {
   listUnreadNotifications,
   listPreferences,
   upsertPreference,
+  getUiState,
+  getWindowState,
+  saveUiState,
+  saveWindowState,
 } from '@main/db/queries';
 
 const createTestDb = (): InstanceType<typeof Database> => {
@@ -330,5 +334,61 @@ describe('SQLite Database', () => {
     const unreadAfter = listUnreadNotifications(db, 10);
     expect(unreadAfter).toHaveLength(1);
     expect(unreadAfter[0]?.id).toBe('n1');
+  });
+
+  it('liefert Default-Window-State und persistiert neue Bounds', () => {
+    db = createTestDb();
+
+    expect(getWindowState(db)).toEqual({
+      x: null,
+      y: null,
+      width: 1400,
+      height: 900,
+      isMaximized: false,
+    });
+
+    saveWindowState(db, {
+      x: 40,
+      y: 80,
+      width: 1600,
+      height: 1000,
+      isMaximized: true,
+    });
+
+    expect(getWindowState(db)).toEqual({
+      x: 40,
+      y: 80,
+      width: 1600,
+      height: 1000,
+      isMaximized: true,
+    });
+  });
+
+  it('liefert Default-UI-State und merged partielle Updates', () => {
+    db = createTestDb();
+    createWorkspace(db, 'ws1', 'Alpha', '/alpha', Date.now());
+
+    expect(getUiState(db)).toEqual({
+      activeWorkspaceId: null,
+      activeTerminalId: null,
+      splitMode: 'single',
+      splitRatio: 0.5,
+    });
+
+    saveUiState(db, {
+      activeWorkspaceId: 'ws1',
+      splitMode: 'grid',
+    });
+    saveUiState(db, {
+      activeTerminalId: 'term-9',
+      splitRatio: 0.75,
+    });
+
+    expect(getUiState(db)).toEqual({
+      activeWorkspaceId: 'ws1',
+      activeTerminalId: 'term-9',
+      splitMode: 'grid',
+      splitRatio: 0.75,
+    });
   });
 });
