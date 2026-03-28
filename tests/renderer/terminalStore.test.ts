@@ -73,6 +73,57 @@ describe('terminalStore', () => {
     expect(useTerminalStore.getState().terminals.get('t1')?.status).toBe('exited');
   });
 
+  it('setzt Waiting-State mit Kontext', () => {
+    const store = useTerminalStore.getState();
+    store.addTerminal(makeTerminal({ terminalId: 't1' }));
+
+    store.setWaitingState('t1', 'Continue deploy? [Y/n]', 1234);
+
+    expect(useTerminalStore.getState().terminals.get('t1')).toEqual(expect.objectContaining({
+      isWaiting: true,
+      waitingContext: 'Continue deploy? [Y/n]',
+      waitingSince: 1234,
+    }));
+  });
+
+  it('loescht Waiting-State wieder', () => {
+    const store = useTerminalStore.getState();
+    store.addTerminal(makeTerminal({ terminalId: 't1', isWaiting: true, waitingContext: 'Prompt', waitingSince: 1234 }));
+
+    store.clearWaitingState('t1');
+
+    expect(useTerminalStore.getState().terminals.get('t1')).toEqual(expect.objectContaining({
+      isWaiting: false,
+      waitingContext: undefined,
+      waitingSince: undefined,
+    }));
+  });
+
+  it('behaelt Waiting-Metadaten beim setTerminals-Refresh', () => {
+    const store = useTerminalStore.getState();
+    store.addTerminal(makeTerminal({
+      terminalId: 't1',
+      label: { prefix: 'T', index: 1 },
+      isWaiting: true,
+      waitingContext: 'Apply migration? [Y/n]',
+      waitingSince: 99,
+    }));
+
+    store.setTerminals([
+      makeTerminal({
+        terminalId: 't1',
+        label: { prefix: 'T', index: 1 },
+        status: 'active',
+      }),
+    ]);
+
+    expect(useTerminalStore.getState().terminals.get('t1')).toEqual(expect.objectContaining({
+      isWaiting: true,
+      waitingContext: 'Apply migration? [Y/n]',
+      waitingSince: 99,
+    }));
+  });
+
   it('durchlaeuft Split-Modi zyklisch', () => {
     const store = useTerminalStore.getState();
 

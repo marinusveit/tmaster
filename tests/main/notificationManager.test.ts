@@ -163,4 +163,65 @@ describe('NotificationManager', () => {
     managerUnfocused.notify({ title: 'Yes', body: 'Desktop', level: 'info', terminalId: 't2' });
     expect(createdDesktopNotifications).toHaveLength(1);
   });
+
+  it('waiting erzeugt sofortige Notification mit Kontext und Recommendation-Hinweis', () => {
+    const broadcast = vi.fn();
+    const manager = new NotificationManager(
+      db,
+      broadcast,
+      () => true,
+      vi.fn(),
+      () => ({
+        displayName: 'T3',
+        workspaceId: 'ws1',
+      }),
+      () => 'Mit "y" nur bestätigen, wenn der Schritt erwartet ist.',
+    );
+
+    manager.onTerminalEvent({
+      terminalId: 't3',
+      timestamp: Date.now(),
+      type: 'waiting',
+      summary: 'Run setup now? [Y/n]',
+      source: 'pattern',
+    });
+
+    const unread = manager.getUnread();
+    expect(unread).toHaveLength(1);
+    expect(unread[0]).toEqual(expect.objectContaining({
+      title: 'T3 wartet auf Input',
+      level: 'warning',
+      workspaceId: 'ws1',
+    }));
+    expect(unread[0]?.body).toContain('Run setup now? [Y/n]');
+    expect(unread[0]?.body).toContain('Vorschlag: Mit "y" nur bestätigen');
+    expect(broadcast).toHaveBeenCalledTimes(1);
+  });
+
+  it('waiting dedupliziert identische Rueckfragen innerhalb des Cooldowns', () => {
+    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn());
+
+    const waitingEvent = {
+      terminalId: 't1',
+      timestamp: Date.now(),
+      type: 'waiting' as const,
+      summary: 'Continue deploy? [Y/n]',
+      source: 'pattern' as const,
+    };
+
+    manager.onTerminalEvent(waitingEvent);
+    manager.onTerminalEvent({
+      ...waitingEvent,
+      timestamp: Date.now() + 10_000,
+    });
+
+    expect(manager.getUnread()).toHaveLength(1);
+
+    manager.onTerminalEvent({
+      ...waitingEvent,
+      timestamp: Date.now() + 31_000,
+    });
+
+    expect(manager.getUnread()).toHaveLength(2);
+  });
 });

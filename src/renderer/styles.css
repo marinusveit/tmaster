@@ -38,6 +38,8 @@
   /* Status */
   --status-active: #5ee0a0;
   --status-active-bg: rgba(94, 224, 160, 0.10);
+  --status-waiting: #f5b24d;
+  --status-waiting-bg: rgba(245, 178, 77, 0.14);
   --status-idle: #e0b44a;
   --status-idle-bg: rgba(224, 180, 74, 0.10);
   --status-exited: #55555e;
@@ -72,6 +74,7 @@
 
   /* Shadows */
   --shadow-glow-active: 0 0 8px rgba(94, 224, 160, 0.45);
+  --shadow-glow-waiting: 0 0 10px rgba(245, 178, 77, 0.45);
   --shadow-glow-idle: 0 0 6px rgba(224, 180, 74, 0.35);
   --shadow-glow-accent: 0 0 12px rgba(232, 113, 74, 0.35);
   --shadow-drop-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -172,6 +175,17 @@
   }
   100% {
     transform: translateY(100%);
+  }
+}
+
+@keyframes waitingPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(0.92);
   }
 }
 
@@ -584,14 +598,61 @@ body,
   border-left-color: var(--status-idle);
 }
 
+.terminal-list-item--status-waiting {
+  border-left-color: var(--status-waiting);
+}
+
 .terminal-list-item--status-exited {
   border-left-color: var(--status-exited);
+}
+
+.terminal-list-item--waiting {
+  background:
+    linear-gradient(90deg, var(--status-waiting-bg), transparent 65%),
+    rgba(255, 255, 255, 0.01);
+}
+
+.terminal-list-item__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+  flex: 1;
+}
+
+.terminal-list-item__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
 }
 
 .terminal-list-item__label {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   letter-spacing: -0.01em;
+}
+
+.terminal-list-item__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(245, 178, 77, 0.14);
+  color: var(--status-waiting);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+  white-space: nowrap;
+}
+
+.terminal-list-item__context {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ============================================================
@@ -620,6 +681,21 @@ body,
   border-radius: 50%;
   border: 1.5px solid var(--status-active);
   animation: statusRing 2s ease-out infinite;
+}
+
+.status-dot--waiting {
+  background: var(--status-waiting);
+  box-shadow: var(--shadow-glow-waiting);
+  animation: waitingPulse 1s ease-in-out infinite;
+}
+
+.status-dot--waiting::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(245, 178, 77, 0.75);
+  animation: statusRing 1.2s ease-out infinite;
 }
 
 .status-dot--idle {

@@ -72,6 +72,16 @@ describe('EventExtractor', () => {
 
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe('waiting');
+    expect(events[0]?.summary).toBe('Waiting for input');
+  });
+
+  it('zieht bei Waiting die eigentliche Rueckfrage in die Summary', () => {
+    const extractor = new EventExtractor();
+    const events = extractor.extract('t1', 'Apply database migration now? [Y/n]\n⏳ waiting for input');
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe('waiting');
+    expect(events[0]?.summary).toBe('Apply database migration now? [Y/n]');
   });
 
   it('erkennt mehrere Patterns in einem Chunk', () => {

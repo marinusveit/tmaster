@@ -2,7 +2,17 @@ import { useCallback, useEffect } from 'react';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { transport } from '@renderer/transport';
 import { destroyTerminalInstance } from '@renderer/components/terminal/terminalInstances';
-import type { CreateTerminalRequest, CreateTerminalResponse, ListTerminalsResponse, TerminalExitEvent, TerminalStatusEvent } from '@shared/types/terminal';
+import type {
+  CreateTerminalRequest,
+  CreateTerminalResponse,
+  ListTerminalsResponse,
+  TerminalDataEvent,
+  TerminalExitEvent,
+  TerminalStatusEvent,
+} from '@shared/types/terminal';
+import type { TerminalEvent } from '@shared/types/event';
+
+const WAITING_OUTPUT_REGEX = /(?:waiting\s+for\s+input|⏳|\[[Yy]\/[Nn]\]|\[[Yy]es\/[Nn]o\]|\([Yy]\/[Nn]\)|\(yes\/no\)|press\s+enter|hit\s+enter|confirm|continue\?)/i;
 
 export const useTerminals = () => {
   const {
@@ -12,6 +22,8 @@ export const useTerminals = () => {
     removeTerminal,
     setActiveTerminal,
     updateStatus,
+    setWaitingState,
+    clearWaitingState,
     getOrderedTerminals,
     getTerminalsByWorkspace,
     setTerminals,
@@ -30,11 +42,33 @@ export const useTerminals = () => {
       updateStatus(event.terminalId, event.status);
     });
 
+    const unsubEvent = transport.on<TerminalEvent>('onTerminalEvent', (event) => {
+      if (event.type === 'waiting') {
+        setWaitingState(event.terminalId, event.summary, event.timestamp);
+        return;
+      }
+
+      clearWaitingState(event.terminalId);
+    });
+
+    const unsubData = transport.on<TerminalDataEvent>('onTerminalData', (event) => {
+      const terminal = useTerminalStore.getState().terminals.get(event.terminalId);
+      if (!terminal?.isWaiting) {
+        return;
+      }
+
+      if (!WAITING_OUTPUT_REGEX.test(event.data)) {
+        clearWaitingState(event.terminalId);
+      }
+    });
+
     return () => {
       unsubExit();
       unsubStatus();
+      unsubEvent();
+      unsubData();
     };
-  }, [removeTerminal, updateStatus]);
+  }, [clearWaitingState, removeTerminal, setWaitingState, updateStatus]);
 
   const createTerminal = useCallback(async (request: CreateTerminalRequest = {}): Promise<CreateTerminalResponse> => {
     const response = await transport.invoke<CreateTerminalResponse>('createTerminal', request);

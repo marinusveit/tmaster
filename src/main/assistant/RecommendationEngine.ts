@@ -22,6 +22,11 @@ export interface TerminalState {
 }
 
 const COOLDOWN_MS = 5 * 60 * 1000;
+const GENERIC_WAITING_SUMMARY_REGEX = /^(?:⏳\s*)?waiting\s+for\s+input$/i;
+const YES_NO_PROMPT_REGEX = /(?:\[[Yy]\/[Nn]\]|\[[Yy]es\/[Nn]o\]|\([Yy]\/[Nn]\)|\(yes\/no\)|\b(?:yes|no)\b)/i;
+const ENTER_PROMPT_REGEX = /(?:press|hit)\s+enter|enter\s+to\s+(?:continue|confirm|proceed)/i;
+const DESTRUCTIVE_PROMPT_REGEX = /\b(?:delete|remove|destroy|reset|drop|overwrite|force)\b/i;
+const SAFE_CONTINUE_PROMPT_REGEX = /\b(?:continue|proceed|retry|install|apply|merge|start|save|create)\b/i;
 
 const levelPriority: Record<CoachingLevel, number> = {
   observe: 0,
@@ -48,6 +53,27 @@ const createSuggestion = (params: {
     actions: params.actions,
     timestamp: Date.now(),
   };
+};
+
+const extractWaitingPrompt = (event: TerminalEvent): string => {
+  const summary = event.summary.trim();
+  if (summary.length > 0 && !GENERIC_WAITING_SUMMARY_REGEX.test(summary)) {
+    return summary;
+  }
+
+  const lines = event.details
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0) ?? [];
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (line && !GENERIC_WAITING_SUMMARY_REGEX.test(line)) {
+      return line;
+    }
+  }
+
+  return 'Wartet auf Input';
 };
 
 export class RecommendationEngine {
@@ -177,9 +203,55 @@ export class RecommendationEngine {
       }
     }
 
+    if (event.type === 'waiting' && this.canUseLevel('suggest')) {
+      const prompt = extractWaitingPrompt(event);
+      const hint = this.buildWaitingResponseHint(event);
+      const description = hint
+        ? `${prompt} Vorschlag: ${hint}`
+        : prompt;
+
+      const suggestion = createSuggestion({
+        title: `${event.terminalId} wartet auf Input`,
+        description,
+        priority: 'high',
+        category: 'workflow',
+        terminalId: event.terminalId,
+        actions: [
+          { type: 'focus-terminal', label: 'Öffnen', payload: event.terminalId },
+          { type: 'dismiss', label: 'Ignorieren' },
+        ],
+      });
+
+      if (this.shouldEmit(suggestion)) {
+        this.onSuggestion(suggestion);
+      }
+    }
+
     if (event.type === 'error') {
       this.evaluate();
     }
+  }
+
+  public buildWaitingResponseHint(event: TerminalEvent): string | null {
+    const prompt = extractWaitingPrompt(event);
+
+    if (ENTER_PROMPT_REGEX.test(prompt)) {
+      return 'Enter senden, wenn dieser Schritt erwartet ist.';
+    }
+
+    if (YES_NO_PROMPT_REGEX.test(prompt)) {
+      if (DESTRUCTIVE_PROMPT_REGEX.test(prompt)) {
+        return 'Eher mit "n" abbrechen und erst Befehl oder Diff prüfen.';
+      }
+
+      if (SAFE_CONTINUE_PROMPT_REGEX.test(prompt)) {
+        return 'Mit "y" nur bestätigen, wenn der Schritt wirklich erwartet ist.';
+      }
+
+      return 'Antwort bewusst prüfen, bevor du bestätigst.';
+    }
+
+    return null;
   }
 
   public dispose(): void {

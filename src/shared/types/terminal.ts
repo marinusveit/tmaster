@@ -54,6 +54,9 @@ export interface TerminalSessionInfo {
   workspaceId: WorkspaceId;
   status: TerminalStatus;
   createdAt: number;
+  isWaiting?: boolean;
+  waitingContext?: string;
+  waitingSince?: number;
 }
 
 export interface TerminalStatusEvent {

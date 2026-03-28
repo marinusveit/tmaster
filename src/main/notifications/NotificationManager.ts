@@ -19,7 +19,19 @@ interface NotifyParams {
   workspaceId?: string;
 }
 
+interface TerminalNotificationContext {
+  displayName?: string;
+  workspaceId?: string;
+}
+
+interface WaitingNotificationSnapshot {
+  key: string;
+  timestamp: number;
+}
+
 const DESKTOP_RATE_LIMIT_MS = 30_000;
+const WAITING_NOTIFICATION_COOLDOWN_MS = 30_000;
+const GENERIC_WAITING_SUMMARY_REGEX = /^(?:⏳\s*)?waiting\s+for\s+input$/i;
 
 const parseContextPercentage = (summary: string): number | null => {
   const match = summary.match(/(\d+)%/);
@@ -44,15 +56,38 @@ const toAppNotification = (row: NotificationRow): AppNotification => {
   };
 };
 
+const extractWaitingPrompt = (event: TerminalEvent): string => {
+  const summary = event.summary.trim();
+  if (summary.length > 0 && !GENERIC_WAITING_SUMMARY_REGEX.test(summary)) {
+    return summary;
+  }
+
+  const lines = event.details
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0) ?? [];
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (line && !GENERIC_WAITING_SUMMARY_REGEX.test(line)) {
+      return line;
+    }
+  }
+
+  return 'Wartet auf Input';
+};
+
 export class NotificationManager {
   private readonly desktopRateLimit = new Map<string, number>();
-  private readonly waitingSince = new Map<string, number>();
+  private readonly lastWaitingNotificationByTerminal = new Map<string, WaitingNotificationSnapshot>();
 
   public constructor(
     private readonly db: BetterSqlite3.Database,
     private readonly broadcast: (channel: string, payload: unknown) => void,
     private readonly isWindowFocused: () => boolean,
     private readonly focusMainWindow: () => void,
+    private readonly getTerminalContext?: (terminalId: string) => TerminalNotificationContext | undefined,
+    private readonly getWaitingResponseHint?: (event: TerminalEvent) => string | null,
   ) {}
 
   public notify(params: NotifyParams): AppNotification {
@@ -84,12 +119,20 @@ export class NotificationManager {
   }
 
   public onTerminalEvent(event: TerminalEvent): void {
+    if (event.type !== 'waiting') {
+      this.lastWaitingNotificationByTerminal.delete(event.terminalId);
+    }
+
+    const terminalContext = this.getTerminalContext?.(event.terminalId);
+    const terminalName = terminalContext?.displayName ?? event.terminalId;
+
     if (event.type === 'error') {
       this.notify({
-        title: `${event.terminalId} Fehler`,
+        title: `${terminalName} Fehler`,
         body: event.summary,
         level: 'error',
         terminalId: event.terminalId,
+        workspaceId: terminalContext?.workspaceId,
       });
       return;
     }
@@ -98,10 +141,11 @@ export class NotificationManager {
       const contextPercent = parseContextPercentage(event.summary);
       if (contextPercent !== null && contextPercent > 80) {
         this.notify({
-          title: `${event.terminalId} Kontext-Warnung`,
+          title: `${terminalName} Kontext-Warnung`,
           body: event.summary,
           level: 'warning',
           terminalId: event.terminalId,
+          workspaceId: terminalContext?.workspaceId,
         });
       }
       return;
@@ -109,59 +153,81 @@ export class NotificationManager {
 
     if (event.type === 'test_result' && /FAIL/i.test(event.summary)) {
       this.notify({
-        title: `${event.terminalId} Tests fehlgeschlagen`,
+        title: `${terminalName} Tests fehlgeschlagen`,
         body: event.summary,
         level: 'error',
         terminalId: event.terminalId,
+        workspaceId: terminalContext?.workspaceId,
       });
       return;
     }
 
     if (event.type === 'server_started') {
       this.notify({
-        title: `${event.terminalId} Server gestartet`,
+        title: `${terminalName} Server gestartet`,
         body: event.summary,
         level: 'success',
         terminalId: event.terminalId,
+        workspaceId: terminalContext?.workspaceId,
       });
       return;
     }
 
     if (event.type === 'waiting') {
-      const waitingStart = this.waitingSince.get(event.terminalId);
-      if (!waitingStart) {
-        this.waitingSince.set(event.terminalId, event.timestamp);
+      const prompt = extractWaitingPrompt(event);
+      const suggestion = this.getWaitingResponseHint?.(event) ?? null;
+      const notificationKey = `${prompt}|${suggestion ?? ''}`;
+      const previous = this.lastWaitingNotificationByTerminal.get(event.terminalId);
+
+      if (
+        previous
+        && previous.key === notificationKey
+        && event.timestamp - previous.timestamp < WAITING_NOTIFICATION_COOLDOWN_MS
+      ) {
         return;
       }
 
-      if (event.timestamp - waitingStart >= 120_000) {
-        this.notify({
-          title: `${event.terminalId} wartet auf Input`,
-          body: event.summary,
-          level: 'info',
-          terminalId: event.terminalId,
-        });
-        this.waitingSince.set(event.terminalId, event.timestamp);
-      }
+      this.lastWaitingNotificationByTerminal.set(event.terminalId, {
+        key: notificationKey,
+        timestamp: event.timestamp,
+      });
+
+      const body = suggestion
+        ? `${prompt}\nVorschlag: ${suggestion}`
+        : prompt;
+
+      this.notify({
+        title: `${terminalName} wartet auf Input`,
+        body,
+        level: 'warning',
+        terminalId: event.terminalId,
+        workspaceId: terminalContext?.workspaceId,
+      });
     }
   }
 
   public onTerminalExit(terminalId: string, exitCode: number): void {
+    this.lastWaitingNotificationByTerminal.delete(terminalId);
+    const terminalContext = this.getTerminalContext?.(terminalId);
+    const terminalName = terminalContext?.displayName ?? terminalId;
+
     if (exitCode === 0) {
       this.notify({
-        title: `${terminalId} fertig`,
-        body: `${terminalId} wurde erfolgreich beendet.`,
+        title: `${terminalName} fertig`,
+        body: `${terminalName} wurde erfolgreich beendet.`,
         level: 'success',
         terminalId,
+        workspaceId: terminalContext?.workspaceId,
       });
       return;
     }
 
     this.notify({
-      title: `${terminalId} fehlgeschlagen`,
-      body: `${terminalId} wurde mit Exit ${exitCode} beendet.`,
+      title: `${terminalName} fehlgeschlagen`,
+      body: `${terminalName} wurde mit Exit ${exitCode} beendet.`,
       level: 'error',
       terminalId,
+      workspaceId: terminalContext?.workspaceId,
     });
   }
 

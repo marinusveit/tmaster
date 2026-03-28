@@ -28,10 +28,11 @@ export const StatusBar = ({
   splitMode,
   onCycleSplitMode,
 }: StatusBarProps): JSX.Element => {
-  const active = terminals.filter((t) => t.status === 'active').length;
-  const idle = terminals.filter((t) => t.status === 'idle').length;
+  const waiting = terminals.filter((t) => t.isWaiting).length;
+  const active = terminals.filter((t) => t.status === 'active' && !t.isWaiting).length;
+  const idle = terminals.filter((t) => t.status === 'idle' && !t.isWaiting).length;
   const exited = terminals.filter((t) => t.status === 'exited').length;
-  const hasTerminals = active > 0 || idle > 0 || exited > 0;
+  const hasTerminals = active > 0 || waiting > 0 || idle > 0 || exited > 0;
 
   return (
     <footer className="status-bar">
@@ -40,6 +41,11 @@ export const StatusBar = ({
           {active > 0 && (
             <span className="status-bar__badge status-bar__badge--active">
               <span className="status-dot status-dot--active" /> {active} active
+            </span>
+          )}
+          {waiting > 0 && (
+            <span className="status-bar__badge status-bar__badge--idle">
+              <span className="status-dot status-dot--waiting" /> {waiting} waiting
             </span>
           )}
           {idle > 0 && (

@@ -153,6 +153,18 @@ const bootstrap = async (): Promise<void> => {
       const focusedWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
       focusedWindow?.focus();
     },
+    (terminalId) => {
+      const session = terminalManager?.getSession(terminalId);
+      if (!session) {
+        return undefined;
+      }
+
+      return {
+        displayName: `${session.label.prefix}${session.label.index}`,
+        workspaceId: session.workspaceId,
+      };
+    },
+    (event) => recommendationEngine?.buildWaitingResponseHint(event) ?? null,
   );
   const outputRingBuffer = new OutputRingBuffer();
   const lastEventTypeByTerminal = new Map<string, EventType>();

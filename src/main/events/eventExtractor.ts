@@ -6,7 +6,7 @@ interface EventPattern {
   regex: RegExp;
   type: EventType;
   source: EventSource;
-  buildSummary?: (match: RegExpMatchArray) => string;
+  buildSummary?: (match: RegExpMatchArray, data: string) => string;
 }
 
 export interface EventExtractorConfig {
@@ -48,7 +48,7 @@ const DEFAULT_PATTERNS: EventPattern[] = [
     regex: /waiting\s+for\s+input|⏳/i,
     type: 'waiting',
     source: 'pattern',
-    buildSummary: () => 'Waiting for input',
+    buildSummary: (_match, data) => extractWaitingSummary(data),
   },
 ];
 
@@ -58,6 +58,34 @@ const truncate = (text: string, maxLength: number): string => {
   }
 
   return `${text.slice(0, maxLength - 3)}...`;
+};
+
+const GENERIC_WAITING_SUMMARY_REGEX = /^(?:⏳\s*)?waiting\s+for\s+input$/i;
+const WAITING_CONTEXT_REGEX = /(?:\?\s*(?:\[[Yy]\/[Nn]\]|\[[Yy]es\/[Nn]o\]|\([Yy]\/[Nn]\)|\(yes\/no\))?|press\s+enter|hit\s+enter|confirm|continue|proceed|overwrite|delete|install|retry)/i;
+
+const extractWaitingSummary = (data: string): string => {
+  const lines = data
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line) {
+      continue;
+    }
+
+    if (WAITING_CONTEXT_REGEX.test(line) && !GENERIC_WAITING_SUMMARY_REGEX.test(line)) {
+      return line;
+    }
+
+    if (line.includes('?') && !GENERIC_WAITING_SUMMARY_REGEX.test(line)) {
+      return line;
+    }
+  }
+
+  const contextualLine = lines.find((line) => !GENERIC_WAITING_SUMMARY_REGEX.test(line));
+  return contextualLine ?? 'Waiting for input';
 };
 
 export class EventExtractor {
@@ -76,7 +104,7 @@ export class EventExtractor {
       const globalRegex = new RegExp(pattern.regex.source, pattern.regex.flags.includes('g') ? pattern.regex.flags : `${pattern.regex.flags}g`);
       for (const match of data.matchAll(globalRegex)) {
         const rawSummary = pattern.buildSummary
-          ? pattern.buildSummary(match)
+          ? pattern.buildSummary(match, data)
           : (match[0]?.trim() ?? 'Event detected');
 
         const summary = truncate(rawSummary, MAX_SUMMARY_LENGTH);

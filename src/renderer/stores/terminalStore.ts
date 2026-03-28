@@ -9,6 +9,18 @@ const DEFAULT_SPLIT_RATIO = 0.5;
 const MIN_SPLIT_RATIO = 0.2;
 const MAX_SPLIT_RATIO = 0.8;
 
+const mergeTerminalWithEphemeralState = (
+  incoming: TerminalSessionInfo,
+  existing?: TerminalSessionInfo,
+): TerminalSessionInfo => {
+  return {
+    ...incoming,
+    isWaiting: existing?.isWaiting ?? incoming.isWaiting,
+    waitingContext: existing?.waitingContext ?? incoming.waitingContext,
+    waitingSince: existing?.waitingSince ?? incoming.waitingSince,
+  };
+};
+
 interface TerminalStoreState {
   terminals: Map<TerminalId, TerminalSessionInfo>;
   activeTerminalId: TerminalId | null;
@@ -21,6 +33,8 @@ interface TerminalStoreActions {
   removeTerminal: (terminalId: TerminalId) => void;
   setActiveTerminal: (terminalId: TerminalId | null) => void;
   updateStatus: (terminalId: TerminalId, status: TerminalStatus) => void;
+  setWaitingState: (terminalId: TerminalId, context: string, timestamp: number) => void;
+  clearWaitingState: (terminalId: TerminalId) => void;
   getOrderedTerminals: () => TerminalSessionInfo[];
   getTerminalsByWorkspace: (workspaceId: WorkspaceId) => TerminalSessionInfo[];
   setTerminals: (terminals: TerminalSessionInfo[]) => void;
@@ -41,7 +55,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
   addTerminal: (terminal) => {
     set((state) => {
       const next = new Map(state.terminals);
-      next.set(terminal.terminalId, terminal);
+      next.set(terminal.terminalId, mergeTerminalWithEphemeralState(terminal, state.terminals.get(terminal.terminalId)));
       return { terminals: next };
     });
   },
@@ -70,7 +84,49 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       }
 
       const next = new Map(state.terminals);
-      next.set(terminalId, { ...existing, status });
+      next.set(terminalId, {
+        ...existing,
+        status,
+        isWaiting: status === 'exited' ? false : existing.isWaiting,
+        waitingContext: status === 'exited' ? undefined : existing.waitingContext,
+        waitingSince: status === 'exited' ? undefined : existing.waitingSince,
+      });
+      return { terminals: next };
+    });
+  },
+
+  setWaitingState: (terminalId, context, timestamp) => {
+    set((state) => {
+      const existing = state.terminals.get(terminalId);
+      if (!existing) {
+        return state;
+      }
+
+      const next = new Map(state.terminals);
+      next.set(terminalId, {
+        ...existing,
+        isWaiting: true,
+        waitingContext: context,
+        waitingSince: timestamp,
+      });
+      return { terminals: next };
+    });
+  },
+
+  clearWaitingState: (terminalId) => {
+    set((state) => {
+      const existing = state.terminals.get(terminalId);
+      if (!existing || !existing.isWaiting) {
+        return state;
+      }
+
+      const next = new Map(state.terminals);
+      next.set(terminalId, {
+        ...existing,
+        isWaiting: false,
+        waitingContext: undefined,
+        waitingSince: undefined,
+      });
       return { terminals: next };
     });
   },
@@ -90,7 +146,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
   setTerminals: (terminals) => {
     const map = new Map<TerminalId, TerminalSessionInfo>();
     for (const t of terminals) {
-      map.set(t.terminalId, t);
+      map.set(t.terminalId, mergeTerminalWithEphemeralState(t, get().terminals.get(t.terminalId)));
     }
     set({ terminals: map });
   },

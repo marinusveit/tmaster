@@ -100,6 +100,34 @@ describe('RecommendationEngine', () => {
     expect(onSuggestion).toHaveBeenCalled();
   });
 
+  it('onEvent mit waiting erzeugt sofortige Workflow-Suggestion mit Hint', () => {
+    engine.onEvent({
+      terminalId: 't1',
+      timestamp: Date.now(),
+      type: 'waiting',
+      summary: 'Delete generated cache? [y/N]',
+      source: 'pattern',
+    });
+
+    expect(onSuggestion).toHaveBeenCalledWith(expect.objectContaining({
+      category: 'workflow',
+      title: 't1 wartet auf Input',
+      description: expect.stringContaining('Eher mit "n" abbrechen'),
+    }));
+  });
+
+  it('buildWaitingResponseHint erkennt Enter-Prompts', () => {
+    const hint = engine.buildWaitingResponseHint({
+      terminalId: 't1',
+      timestamp: Date.now(),
+      type: 'waiting',
+      summary: 'Press Enter to continue',
+      source: 'pattern',
+    });
+
+    expect(hint).toContain('Enter senden');
+  });
+
   it('dispose stoppt Interval', () => {
     engine.start();
     engine.dispose();
