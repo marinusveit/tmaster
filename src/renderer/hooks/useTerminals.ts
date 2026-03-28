@@ -6,6 +6,7 @@ import type {
   CreateTerminalRequest,
   CreateTerminalResponse,
   ListTerminalsResponse,
+  ReorderTerminalsRequest,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalStatusEvent,
@@ -20,6 +21,7 @@ export const useTerminals = () => {
     activeTerminalId,
     addTerminal,
     removeTerminal,
+    reorderTerminals,
     setActiveTerminal,
     updateStatus,
     setWaitingState,
@@ -76,6 +78,7 @@ export const useTerminals = () => {
       terminalId: response.terminalId,
       label: response.label,
       workspaceId: response.workspaceId,
+      displayOrder: response.displayOrder ?? response.label.index,
       status: 'active',
       createdAt: Date.now(),
     });
@@ -93,6 +96,18 @@ export const useTerminals = () => {
     setActiveTerminal(terminalId);
   }, [setActiveTerminal]);
 
+  const reorderTerminalTabs = useCallback(async (request: ReorderTerminalsRequest): Promise<void> => {
+    reorderTerminals(request.workspaceId, request.orderedTerminalIds);
+
+    try {
+      await transport.invoke<void>('reorderTerminals', request);
+    } catch (error) {
+      const response = await transport.invoke<ListTerminalsResponse>('listTerminals');
+      setTerminals(response.terminals);
+      throw error;
+    }
+  }, [reorderTerminals, setTerminals]);
+
   const loadTerminals = useCallback(async (): Promise<void> => {
     const response = await transport.invoke<ListTerminalsResponse>('listTerminals');
     setTerminals(response.terminals);
@@ -103,6 +118,7 @@ export const useTerminals = () => {
     activeTerminalId,
     createTerminal,
     closeTerminal,
+    reorderTerminalTabs,
     switchTerminal,
     loadTerminals,
     getOrderedTerminals,

@@ -3,6 +3,7 @@ export const IPC_CHANNELS = {
   terminalWrite: 'terminal:write',
   terminalResize: 'terminal:resize',
   terminalClose: 'terminal:close',
+  terminalReorder: 'terminal:reorder',
   terminalData: 'terminal:data',
   terminalExit: 'terminal:exit',
   terminalList: 'terminal:list',

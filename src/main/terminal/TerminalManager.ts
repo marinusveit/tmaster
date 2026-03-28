@@ -5,6 +5,7 @@ import type { IPty } from 'node-pty';
 import type {
   CreateTerminalRequest,
   CreateTerminalResponse,
+  ReorderTerminalsRequest,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalId,
@@ -19,6 +20,7 @@ interface TerminalSession {
   dataDisposable: { dispose: () => void };
   label: TerminalLabel;
   workspaceId: WorkspaceId;
+  displayOrder: number;
   status: 'active' | 'idle' | 'exited';
   createdAt: number;
   lastActivity: number;
@@ -58,6 +60,17 @@ export class TerminalManager {
     return { prefix: TERMINAL_LABEL_PREFIX, index: current };
   }
 
+  private getNextDisplayOrder(workspaceId: WorkspaceId): number {
+    let maxDisplayOrder = 0;
+    for (const session of this.sessions.values()) {
+      if (session.workspaceId === workspaceId) {
+        maxDisplayOrder = Math.max(maxDisplayOrder, session.displayOrder);
+      }
+    }
+
+    return maxDisplayOrder + 1;
+  }
+
   public createTerminal(request: CreateTerminalRequest): CreateTerminalResponse {
     if (this.isDisposed) {
       throw new Error('TerminalManager has been disposed');
@@ -70,6 +83,7 @@ export class TerminalManager {
     const terminalId = randomUUID();
     const workspaceId = request.workspaceId ?? TerminalManager.DEFAULT_WORKSPACE_ID;
     const label = this.getNextLabel(workspaceId);
+    const displayOrder = this.getNextDisplayOrder(workspaceId);
     const shell = request.shell ?? this.getDefaultShell();
     const pty = spawn(shell, [], {
       name: 'xterm-256color',
@@ -101,6 +115,7 @@ export class TerminalManager {
       dataDisposable,
       label,
       workspaceId,
+      displayOrder,
       status: 'active',
       createdAt: Date.now(),
       lastActivity: Date.now(),
@@ -128,7 +143,7 @@ export class TerminalManager {
       this.callbacks.onExit({ terminalId, exitCode, signal });
     });
 
-    return { terminalId, label, workspaceId };
+    return { terminalId, label, workspaceId, displayOrder };
   }
 
   public writeTerminal(terminalId: TerminalId, data: string): void {
@@ -162,11 +177,35 @@ export class TerminalManager {
     this.buffers.delete(terminalId);
   }
 
+  public reorderTerminals(request: ReorderTerminalsRequest): void {
+    const workspaceTerminals = [...this.sessions.entries()]
+      .filter(([, session]) => session.workspaceId === request.workspaceId);
+    const workspaceTerminalIds = workspaceTerminals.map(([terminalId]) => terminalId);
+    const expectedIds = new Set(workspaceTerminalIds);
+    const receivedIds = new Set(request.orderedTerminalIds);
+
+    if (
+      workspaceTerminalIds.length !== request.orderedTerminalIds.length
+      || workspaceTerminalIds.some((terminalId) => !receivedIds.has(terminalId))
+      || request.orderedTerminalIds.some((terminalId) => !expectedIds.has(terminalId))
+    ) {
+      throw new Error('Invalid reorder payload');
+    }
+
+    request.orderedTerminalIds.forEach((terminalId, index) => {
+      const session = this.sessions.get(terminalId);
+      if (session) {
+        session.displayOrder = index + 1;
+      }
+    });
+  }
+
   public listTerminals(): TerminalSessionInfo[] {
     return [...this.sessions.entries()].map(([terminalId, session]) => ({
       terminalId,
       label: session.label,
       workspaceId: session.workspaceId,
+      displayOrder: session.displayOrder,
       status: session.status,
       createdAt: session.createdAt,
     }));
@@ -183,6 +222,7 @@ export class TerminalManager {
         terminalId,
         label: session.label,
         workspaceId: session.workspaceId,
+        displayOrder: session.displayOrder,
         status: session.status,
         createdAt: session.createdAt,
         lastActivity: session.lastActivity,
@@ -202,6 +242,7 @@ export class TerminalManager {
       terminalId,
       label: session.label,
       workspaceId: session.workspaceId,
+      displayOrder: session.displayOrder,
       status: session.status,
       createdAt: session.createdAt,
       lastActivity: session.lastActivity,

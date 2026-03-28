@@ -19,6 +19,7 @@ export const runMigrations = (db: BetterSqlite3.Database): void => {
       workspace_id TEXT NOT NULL REFERENCES workspaces(id),
       label_prefix TEXT NOT NULL DEFAULT 'T',
       label_index INTEGER NOT NULL,
+      display_order INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'active',
       created_at INTEGER NOT NULL,
       ended_at INTEGER,
@@ -101,6 +102,15 @@ export const runMigrations = (db: BetterSqlite3.Database): void => {
     CREATE INDEX IF NOT EXISTS idx_file_locks_file_terminal
       ON file_locks(file_path, terminal_id);
   `);
+
+  const sessionColumns = db
+    .prepare("PRAGMA table_info('sessions')")
+    .all() as Array<{ name: string }>;
+  const hasDisplayOrder = sessionColumns.some((column) => column.name === 'display_order');
+  if (!hasDisplayOrder) {
+    db.exec('ALTER TABLE sessions ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;');
+    db.exec('UPDATE sessions SET display_order = label_index WHERE display_order = 0;');
+  }
 
   // Retention: alte file_changes aufräumen (älter als 24h)
   db.exec(`

@@ -36,6 +36,7 @@ import {
   getWorkspace,
   insertEvent,
   getActiveSessionId,
+  updateSessionDisplayOrders,
 } from './db/queries';
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -425,6 +426,7 @@ const bootstrap = async (): Promise<void> => {
       response.label.index,
       request.shell ?? null,
       Date.now(),
+      response.displayOrder,
     );
     latestSessionIdByTerminal.set(response.terminalId, sessionId);
     agentTypeByTerminal.set(response.terminalId, detectAgentType(request.shell));
@@ -441,6 +443,12 @@ const bootstrap = async (): Promise<void> => {
     }
 
     return response;
+  };
+
+  const originalReorderTerminals = terminalManager.reorderTerminals.bind(terminalManager);
+  terminalManager.reorderTerminals = (request) => {
+    originalReorderTerminals(request);
+    updateSessionDisplayOrders(db, request.workspaceId, request.orderedTerminalIds);
   };
 
   registerTerminalHandlers(ipcMain, terminalManager);

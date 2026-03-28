@@ -7,6 +7,7 @@ const makeTerminal = (overrides: Partial<TerminalSessionInfo> = {}): TerminalSes
   terminalId: `t-${Math.random().toString(36).slice(2)}`,
   label: { prefix: 'T', index: 1 },
   workspaceId: 'ws-default',
+  displayOrder: 1,
   status: 'active',
   createdAt: Date.now(),
   ...overrides,
@@ -18,6 +19,7 @@ describe('terminalStore', () => {
       terminals: new Map(),
       activeTerminalId: null,
       splitMode: 'single' as SplitMode,
+      splitRatio: 0.5,
     });
   });
 
@@ -46,12 +48,25 @@ describe('terminalStore', () => {
 
   it('sortiert Terminals nach label.index', () => {
     const store = useTerminalStore.getState();
-    store.addTerminal(makeTerminal({ terminalId: 't3', label: { prefix: 'T', index: 3 } }));
-    store.addTerminal(makeTerminal({ terminalId: 't1', label: { prefix: 'T', index: 1 } }));
-    store.addTerminal(makeTerminal({ terminalId: 't2', label: { prefix: 'T', index: 2 } }));
+    store.addTerminal(makeTerminal({ terminalId: 't3', label: { prefix: 'T', index: 3 }, displayOrder: 3 }));
+    store.addTerminal(makeTerminal({ terminalId: 't1', label: { prefix: 'T', index: 1 }, displayOrder: 1 }));
+    store.addTerminal(makeTerminal({ terminalId: 't2', label: { prefix: 'T', index: 2 }, displayOrder: 2 }));
 
     const ordered = useTerminalStore.getState().getOrderedTerminals();
     expect(ordered.map((t) => t.terminalId)).toEqual(['t1', 't2', 't3']);
+  });
+
+  it('ordnet Terminals im Workspace neu und aktualisiert displayOrder', () => {
+    const store = useTerminalStore.getState();
+    store.addTerminal(makeTerminal({ terminalId: 't1', workspaceId: 'ws-a', displayOrder: 1 }));
+    store.addTerminal(makeTerminal({ terminalId: 't2', workspaceId: 'ws-a', displayOrder: 2 }));
+    store.addTerminal(makeTerminal({ terminalId: 't3', workspaceId: 'ws-a', displayOrder: 3 }));
+
+    store.reorderTerminals('ws-a', ['t3', 't1', 't2']);
+
+    const ordered = useTerminalStore.getState().getTerminalsByWorkspace('ws-a');
+    expect(ordered.map((terminal) => terminal.terminalId)).toEqual(['t3', 't1', 't2']);
+    expect(ordered.map((terminal) => terminal.displayOrder)).toEqual([1, 2, 3]);
   });
 
   it('filtert Terminals nach Workspace', () => {

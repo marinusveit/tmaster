@@ -6,6 +6,7 @@ import type {
   CreateTerminalRequest,
   CreateTerminalResponse,
   ListTerminalsResponse,
+  ReorderTerminalsRequest,
   ResizeTerminalRequest,
   TerminalDataEvent,
   TerminalExitEvent,
@@ -37,6 +38,9 @@ const api: TmasterApi = {
   },
   closeTerminal: (request: CloseTerminalRequest): Promise<void> => {
     return ipcRenderer.invoke(IPC_CHANNELS.terminalClose, request);
+  },
+  reorderTerminals: (request: ReorderTerminalsRequest): Promise<void> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.terminalReorder, request);
   },
   listTerminals: (): Promise<ListTerminalsResponse> => {
     return ipcRenderer.invoke(IPC_CHANNELS.terminalList);

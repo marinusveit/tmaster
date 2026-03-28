@@ -218,6 +218,7 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
             terminalId: response.terminalId,
             label: response.label,
             workspaceId: response.workspaceId,
+            displayOrder: response.displayOrder ?? response.label.index,
             status: 'active',
             createdAt: Date.now(),
           });

@@ -20,6 +20,7 @@ export interface CreateTerminalResponse {
   terminalId: TerminalId;
   label: TerminalLabel;
   workspaceId: WorkspaceId;
+  displayOrder?: number;
 }
 
 export interface WriteTerminalRequest {
@@ -37,6 +38,11 @@ export interface CloseTerminalRequest {
   terminalId: TerminalId;
 }
 
+export interface ReorderTerminalsRequest {
+  workspaceId: WorkspaceId;
+  orderedTerminalIds: TerminalId[];
+}
+
 export interface TerminalDataEvent {
   terminalId: TerminalId;
   data: string;
@@ -52,6 +58,7 @@ export interface TerminalSessionInfo {
   terminalId: TerminalId;
   label: TerminalLabel;
   workspaceId: WorkspaceId;
+  displayOrder?: number;
   status: TerminalStatus;
   createdAt: number;
   isWaiting?: boolean;

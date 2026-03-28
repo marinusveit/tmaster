@@ -69,6 +69,7 @@ interface SessionRow {
   workspace_id: string;
   label_prefix: string;
   label_index: number;
+  display_order: number;
   status: string;
   created_at: number;
   ended_at: number | null;
@@ -130,10 +131,11 @@ export const createSession = (
   labelIndex: number,
   shell: string | null,
   createdAt: number,
+  displayOrder: number = labelIndex,
 ): void => {
   db.prepare(
-    'INSERT INTO sessions (id, terminal_id, workspace_id, label_prefix, label_index, status, created_at, shell) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-  ).run(id, terminalId, workspaceId, labelPrefix, labelIndex, 'active', createdAt, shell);
+    'INSERT INTO sessions (id, terminal_id, workspace_id, label_prefix, label_index, display_order, status, created_at, shell) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, terminalId, workspaceId, labelPrefix, labelIndex, displayOrder, 'active', createdAt, shell);
 };
 
 export const updateSessionStatus = (
@@ -157,11 +159,27 @@ export const endSession = (db: BetterSqlite3.Database, terminalId: string): void
 export const listSessions = (db: BetterSqlite3.Database, workspaceId?: string): SessionRow[] => {
   if (workspaceId) {
     return db
-      .prepare('SELECT * FROM sessions WHERE workspace_id = ? ORDER BY created_at ASC')
+      .prepare('SELECT * FROM sessions WHERE workspace_id = ? ORDER BY display_order ASC, created_at ASC')
       .all(workspaceId) as SessionRow[];
   }
 
-  return db.prepare('SELECT * FROM sessions ORDER BY created_at ASC').all() as SessionRow[];
+  return db.prepare('SELECT * FROM sessions ORDER BY display_order ASC, created_at ASC').all() as SessionRow[];
+};
+
+export const updateSessionDisplayOrders = (
+  db: BetterSqlite3.Database,
+  workspaceId: string,
+  orderedTerminalIds: string[],
+): void => {
+  const updateDisplayOrder = db.prepare(
+    'UPDATE sessions SET display_order = ? WHERE terminal_id = ? AND workspace_id = ? AND ended_at IS NULL',
+  );
+
+  db.transaction((terminalIds: string[]) => {
+    terminalIds.forEach((terminalId, index) => {
+      updateDisplayOrder.run(index + 1, terminalId, workspaceId);
+    });
+  })(orderedTerminalIds);
 };
 
 // --- Event Queries ---

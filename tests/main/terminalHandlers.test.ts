@@ -27,10 +27,12 @@ const createTerminalManagerMock = () => {
       terminalId: 't-1',
       label: { prefix: 'T', index: 1 },
       workspaceId: 'ws-1',
+      displayOrder: 1,
     })),
     writeTerminal: vi.fn(),
     resizeTerminal: vi.fn(),
     closeTerminal: vi.fn(),
+    reorderTerminals: vi.fn(),
     listTerminals: vi.fn(() => []),
   };
 };
@@ -128,6 +130,7 @@ describe('registerTerminalHandlers', () => {
         terminalId: 't-1',
         label: { prefix: 'T', index: 1 },
         workspaceId: 'ws-1',
+        displayOrder: 1,
         status: 'active',
         createdAt: 1,
       },
@@ -137,5 +140,32 @@ describe('registerTerminalHandlers', () => {
     const result = ipcMain.invoke(IPC_CHANNELS.terminalList) as { terminals: Array<{ terminalId: string }> };
     expect(result.terminals).toHaveLength(1);
     expect(result.terminals[0]?.terminalId).toBe('t-1');
+  });
+
+  it('ordnet Terminals via IPC neu an', () => {
+    const ipcMain = createMockIpcMain();
+    const terminalManager = createTerminalManagerMock();
+    registerTerminalHandlers(ipcMain as never, terminalManager as never);
+
+    ipcMain.invoke(IPC_CHANNELS.terminalReorder, {
+      workspaceId: 'ws-1',
+      orderedTerminalIds: ['t-2', 't-1'],
+    });
+
+    expect(terminalManager.reorderTerminals).toHaveBeenCalledWith({
+      workspaceId: 'ws-1',
+      orderedTerminalIds: ['t-2', 't-1'],
+    });
+  });
+
+  it('wirft bei ungültigem reorder payload', () => {
+    const ipcMain = createMockIpcMain();
+    const terminalManager = createTerminalManagerMock();
+    registerTerminalHandlers(ipcMain as never, terminalManager as never);
+
+    expect(() => ipcMain.invoke(IPC_CHANNELS.terminalReorder, {
+      workspaceId: 'ws-1',
+      orderedTerminalIds: ['t-1', 't-1'],
+    })).toThrow('Invalid reorder payload');
   });
 });

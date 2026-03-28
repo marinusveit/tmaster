@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
   CloseTerminalRequest,
   CreateTerminalRequest,
+  ReorderTerminalsRequest,
   ResizeTerminalRequest,
   WriteTerminalRequest,
 } from '../../shared/types/terminal';
@@ -35,6 +36,11 @@ export const registerTerminalHandlers = (ipcMain: IpcMain, terminalManager: Term
   ipcMain.handle(IPC_CHANNELS.terminalClose, (_event, payload: unknown) => {
     const request = parseCloseRequest(payload);
     terminalManager.closeTerminal(request.terminalId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.terminalReorder, (_event, payload: unknown) => {
+    const request = parseReorderRequest(payload);
+    terminalManager.reorderTerminals(request);
   });
 
   ipcMain.handle(IPC_CHANNELS.terminalList, () => {
@@ -108,4 +114,30 @@ const parseCloseRequest = (payload: unknown): CloseTerminalRequest => {
   }
 
   return { terminalId };
+};
+
+const parseReorderRequest = (payload: unknown): ReorderTerminalsRequest => {
+  if (!isObject(payload)) {
+    throw new Error('Invalid reorder payload');
+  }
+
+  const workspaceId = asString(payload.workspaceId);
+  const orderedTerminalIdsValue = payload.orderedTerminalIds;
+  if (!workspaceId || !Array.isArray(orderedTerminalIdsValue)) {
+    throw new Error('Invalid reorder payload');
+  }
+
+  const orderedTerminalIds = orderedTerminalIdsValue.map((terminalId) => asString(terminalId));
+  if (
+    orderedTerminalIds.length === 0
+    || orderedTerminalIds.some((terminalId) => !terminalId)
+    || new Set(orderedTerminalIds).size !== orderedTerminalIds.length
+  ) {
+    throw new Error('Invalid reorder payload');
+  }
+
+  return {
+    workspaceId,
+    orderedTerminalIds: orderedTerminalIds as string[],
+  };
 };

@@ -26,6 +26,7 @@ export const App = (): JSX.Element => {
     activeTerminalId,
     createTerminal,
     closeTerminal,
+    reorderTerminalTabs,
     switchTerminal,
     loadTerminals,
     getOrderedTerminals,
@@ -204,6 +205,19 @@ export const App = (): JSX.Element => {
     });
   }, [closeTerminal, runAsync]);
 
+  const handleReorderTerminals = useCallback((orderedTerminalIds: string[]) => {
+    if (!activeWorkspaceId) {
+      return;
+    }
+
+    runAsync('Terminal-Reihenfolge speichern', async () => {
+      await reorderTerminalTabs({
+        workspaceId: activeWorkspaceId,
+        orderedTerminalIds,
+      });
+    });
+  }, [activeWorkspaceId, reorderTerminalTabs, runAsync]);
+
   const handleCreateWorkspace = useCallback((name: string, path: string) => {
     runAsync('Workspace erstellen', async () => {
       await createWorkspace({ name, path });
@@ -292,6 +306,7 @@ export const App = (): JSX.Element => {
             activeTerminalId={activeTerminalId}
             onSelect={switchTerminal}
             onClose={handleCloseTerminal}
+            onReorder={handleReorderTerminals}
             onCreate={handleCreateTerminal}
           />
           <div

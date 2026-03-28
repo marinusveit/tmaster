@@ -21,6 +21,12 @@ const mergeTerminalWithEphemeralState = (
   };
 };
 
+const compareTerminalDisplayOrder = (left: TerminalSessionInfo, right: TerminalSessionInfo): number => {
+  const leftOrder = left.displayOrder ?? left.label.index;
+  const rightOrder = right.displayOrder ?? right.label.index;
+  return leftOrder - rightOrder || left.createdAt - right.createdAt || left.label.index - right.label.index;
+};
+
 interface TerminalStoreState {
   terminals: Map<TerminalId, TerminalSessionInfo>;
   activeTerminalId: TerminalId | null;
@@ -31,6 +37,7 @@ interface TerminalStoreState {
 interface TerminalStoreActions {
   addTerminal: (terminal: TerminalSessionInfo) => void;
   removeTerminal: (terminalId: TerminalId) => void;
+  reorderTerminals: (workspaceId: WorkspaceId, orderedTerminalIds: TerminalId[]) => void;
   setActiveTerminal: (terminalId: TerminalId | null) => void;
   updateStatus: (terminalId: TerminalId, status: TerminalStatus) => void;
   setWaitingState: (terminalId: TerminalId, context: string, timestamp: number) => void;
@@ -69,6 +76,32 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
         terminals: next,
         activeTerminalId: isActive ? null : state.activeTerminalId,
       };
+    });
+  },
+
+  reorderTerminals: (workspaceId, orderedTerminalIds) => {
+    set((state) => {
+      const workspaceTerminals = [...state.terminals.values()].filter((terminal) => terminal.workspaceId === workspaceId);
+      const orderedIdSet = new Set(orderedTerminalIds);
+      if (
+        workspaceTerminals.length !== orderedTerminalIds.length
+        || workspaceTerminals.some((terminal) => !orderedIdSet.has(terminal.terminalId))
+      ) {
+        return state;
+      }
+
+      const next = new Map(state.terminals);
+      orderedTerminalIds.forEach((terminalId, index) => {
+        const terminal = next.get(terminalId);
+        if (terminal) {
+          next.set(terminalId, {
+            ...terminal,
+            displayOrder: index + 1,
+          });
+        }
+      });
+
+      return { terminals: next };
     });
   },
 
@@ -133,14 +166,14 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
 
   getOrderedTerminals: () => {
     const { terminals } = get();
-    return [...terminals.values()].sort((a, b) => a.label.index - b.label.index);
+    return [...terminals.values()].sort(compareTerminalDisplayOrder);
   },
 
   getTerminalsByWorkspace: (workspaceId) => {
     const { terminals } = get();
     return [...terminals.values()]
       .filter((t) => t.workspaceId === workspaceId)
-      .sort((a, b) => a.label.index - b.label.index);
+      .sort(compareTerminalDisplayOrder);
   },
 
   setTerminals: (terminals) => {

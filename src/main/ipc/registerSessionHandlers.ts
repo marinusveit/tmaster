@@ -14,6 +14,7 @@ const toSessionInfo = (row: {
   workspace_id: string;
   label_prefix: string;
   label_index: number;
+  display_order: number;
   status: string;
   created_at: number;
   ended_at: number | null;
@@ -24,6 +25,7 @@ const toSessionInfo = (row: {
   workspaceId: row.workspace_id,
   labelPrefix: row.label_prefix,
   labelIndex: row.label_index,
+  displayOrder: row.display_order,
   status: row.status,
   createdAt: row.created_at,
   endedAt: row.ended_at,

@@ -9,6 +9,7 @@ import {
   endSession,
   markOrphanedSessionsAsExited,
   incrementTerminalIndex,
+  updateSessionDisplayOrders,
   insertEvent,
   listEventsBySession,
   listRecentEvents,
@@ -94,6 +95,25 @@ describe('SQLite Database', () => {
     }>;
     expect(endedSessions[0]?.status).toBe('exited');
     expect(endedSessions[0]?.ended_at).not.toBeNull();
+  });
+
+  it('persistiert display_order fuer Session-Reordering', () => {
+    db = createTestDb();
+
+    createWorkspace(db, 'ws1', 'Test', '/test', Date.now());
+    createSession(db, 'sess1', 'term1', 'ws1', 'T', 1, '/bin/bash', Date.now());
+    createSession(db, 'sess2', 'term2', 'ws1', 'T', 2, '/bin/zsh', Date.now());
+
+    updateSessionDisplayOrders(db, 'ws1', ['term2', 'term1']);
+
+    const sessions = db.prepare('SELECT terminal_id, display_order FROM sessions WHERE workspace_id = ? ORDER BY display_order ASC').all('ws1') as Array<{
+      terminal_id: string;
+      display_order: number;
+    }>;
+    expect(sessions).toEqual([
+      { terminal_id: 'term2', display_order: 1 },
+      { terminal_id: 'term1', display_order: 2 },
+    ]);
   });
 
   it('markiert verwaiste Sessions bei Crash-Recovery', () => {
