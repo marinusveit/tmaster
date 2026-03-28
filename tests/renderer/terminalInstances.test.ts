@@ -91,6 +91,7 @@ import {
   enableTerminalWebgl,
   getOrCreateTerminal,
   hasTerminalInstance,
+  refreshTerminalAppearance,
 } from '@renderer/components/terminal/terminalInstances';
 
 describe('terminalInstances', () => {
@@ -98,9 +99,31 @@ describe('terminalInstances', () => {
     for (const terminalId of ['t1', 't2', 't3', 't4']) {
       destroyTerminalInstance(terminalId);
     }
+    vi.unstubAllGlobals();
   });
 
   beforeEach(() => {
+    const cssVariables = new Map<string, string>();
+    const style = {
+      setProperty: (name: string, value: string) => {
+        cssVariables.set(name, value);
+      },
+    };
+    vi.stubGlobal('document', {
+      documentElement: {
+        style,
+      },
+    });
+    vi.stubGlobal('getComputedStyle', () => ({
+      getPropertyValue: (name: string) => cssVariables.get(name) ?? '',
+    }));
+
+    document.documentElement.style.setProperty('--terminal-font-family', 'JetBrains Mono');
+    document.documentElement.style.setProperty('--terminal-font-size', '14');
+    document.documentElement.style.setProperty('--terminal-bg', '#101014');
+    document.documentElement.style.setProperty('--terminal-fg', '#e6e6ec');
+    document.documentElement.style.setProperty('--terminal-cursor', '#e8714a');
+    document.documentElement.style.setProperty('--terminal-selection', 'rgba(232, 113, 74, 0.22)');
     mocks.mockWebglAddons.length = 0;
     mocks.state.shouldThrowOnWebglCreation = false;
     mocks.logRendererWarning.mockReset();
@@ -113,6 +136,8 @@ describe('terminalInstances', () => {
     const terminal = entry.terminal as unknown as MockTerminal;
 
     expect(terminal.options.scrollback).toBe(5000);
+    expect(terminal.options.fontSize).toBe(14);
+    expect(terminal.options.fontFamily).toBe('JetBrains Mono');
   });
 
   it('aktiviert WebGL nur einmal pro sichtbarer Instanz', () => {
@@ -161,5 +186,24 @@ describe('terminalInstances', () => {
     expect(addon?.dispose).toHaveBeenCalledTimes(1);
     expect(terminal.dispose).toHaveBeenCalledTimes(1);
     expect(hasTerminalInstance('t1')).toBe(false);
+  });
+
+  it('aktualisiert gecachte Instanzen bei Appearance-Aenderungen', () => {
+    const entry = getOrCreateTerminal('t1');
+    const terminal = entry.terminal as unknown as MockTerminal;
+
+    document.documentElement.style.setProperty('--terminal-font-family', 'Fira Code');
+    document.documentElement.style.setProperty('--terminal-font-size', '18');
+    document.documentElement.style.setProperty('--terminal-bg', '#ffffff');
+    document.documentElement.style.setProperty('--terminal-fg', '#111111');
+
+    refreshTerminalAppearance();
+
+    expect(terminal.options.fontFamily).toBe('Fira Code');
+    expect(terminal.options.fontSize).toBe(18);
+    expect(terminal.options.theme).toMatchObject({
+      background: '#ffffff',
+      foreground: '#111111',
+    });
   });
 });

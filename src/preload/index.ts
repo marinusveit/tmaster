@@ -23,6 +23,7 @@ import type { ListSessionsRequest, ListSessionsResponse } from '../shared/types/
 import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from '../shared/types/broker';
 import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from '../shared/types/assistant';
 import type { AppNotification } from '../shared/types/notification';
+import type { GetPreferencesResponse, SetPreferenceRequest } from '../shared/types/preferences';
 
 const api: TmasterApi = {
   createTerminal: (request: CreateTerminalRequest): Promise<CreateTerminalResponse> => {
@@ -83,6 +84,12 @@ const api: TmasterApi = {
   },
   updateWorkspace: (request: UpdateWorkspaceRequest): Promise<Workspace> => {
     return ipcRenderer.invoke(IPC_CHANNELS.workspaceUpdate, request);
+  },
+  getPreferences: (): Promise<GetPreferencesResponse> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.preferencesGet);
+  },
+  setPreference: (request: SetPreferenceRequest): Promise<GetPreferencesResponse> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.preferencesSet, request);
   },
   listSessions: (request: ListSessionsRequest): Promise<ListSessionsResponse> => {
     return ipcRenderer.invoke(IPC_CHANNELS.sessionList, request);

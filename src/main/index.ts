@@ -21,6 +21,7 @@ import { RecommendationEngine, type TerminalState } from './assistant/Recommenda
 import { registerAssistantHandlers } from './ipc/registerAssistantHandlers';
 import { NotificationManager } from './notifications/NotificationManager';
 import { registerNotificationHandlers } from './ipc/registerNotificationHandlers';
+import { registerPreferenceHandlers } from './ipc/registerPreferenceHandlers';
 import { OutputRingBuffer, SilenceMonitor, TriageCoordinator, TriageService } from './triage';
 import { mapTriageStatusToEventType } from './triage/mapTriageStatusToEventType';
 import { OrchestratorSession } from './orchestrator/OrchestratorSession';
@@ -446,6 +447,7 @@ const bootstrap = async (): Promise<void> => {
   registerWorkspaceHandlers(ipcMain, db, (workspaceId, senderId) => {
     setActiveWorkspaceForSender(workspaceId, senderId);
   });
+  registerPreferenceHandlers(ipcMain, db);
   registerSessionHandlers(ipcMain, db);
   registerBrokerHandlers(ipcMain, contextBroker);
   registerAssistantHandlers(ipcMain, {

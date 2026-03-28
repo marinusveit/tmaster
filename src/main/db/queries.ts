@@ -115,6 +115,12 @@ export interface NotificationRow {
   is_read: number;
 }
 
+export interface PreferenceRow {
+  key: string;
+  value: string;
+  updated_at: number;
+}
+
 export const createSession = (
   db: BetterSqlite3.Database,
   id: string,
@@ -385,6 +391,23 @@ export const listUnreadNotifications = (
        LIMIT ?`,
     )
     .all(limit) as NotificationRow[];
+};
+
+export const listPreferences = (db: BetterSqlite3.Database): PreferenceRow[] => {
+  return db.prepare('SELECT * FROM preferences ORDER BY key ASC').all() as PreferenceRow[];
+};
+
+export const upsertPreference = (
+  db: BetterSqlite3.Database,
+  key: string,
+  value: string,
+  updatedAt: number,
+): void => {
+  db.prepare(
+    `INSERT INTO preferences (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).run(key, value, updatedAt);
 };
 
 /**

@@ -1,4 +1,4 @@
-import { Terminal } from 'xterm';
+import { Terminal, type ITheme } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import type { TerminalId, TerminalDataEvent, TerminalExitEvent } from '@shared/types/terminal';
@@ -21,6 +21,40 @@ export interface CachedTerminal {
 
 const cache = new Map<TerminalId, CachedTerminal>();
 
+const readCssVariable = (name: string, fallback: string): string => {
+  if (typeof document === 'undefined') {
+    return fallback;
+  }
+
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+};
+
+const readTerminalFontSize = (): number => {
+  const value = readCssVariable('--terminal-font-size', '14');
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) ? parsed : 14;
+};
+
+const readTerminalTheme = (): ITheme => {
+  return {
+    background: readCssVariable('--terminal-bg', '#101014'),
+    foreground: readCssVariable('--terminal-fg', '#e6e6ec'),
+    cursor: readCssVariable('--terminal-cursor', '#e8714a'),
+    selectionBackground: readCssVariable('--terminal-selection', 'rgba(232, 113, 74, 0.22)'),
+  };
+};
+
+const applyTerminalAppearance = (entry: CachedTerminal): void => {
+  entry.terminal.options.fontFamily = readCssVariable('--terminal-font-family', 'JetBrains Mono');
+  entry.terminal.options.fontSize = readTerminalFontSize();
+  entry.terminal.options.theme = readTerminalTheme();
+
+  if (entry.isOpened) {
+    entry.fitAddon.fit();
+  }
+};
+
 /**
  * Gibt eine bestehende xterm-Instanz zurück oder erstellt eine neue.
  * IPC-Listener werden einmal beim Erstellen registriert.
@@ -34,11 +68,9 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
   const terminal = new Terminal({
     cursorBlink: true,
     scrollback: 5000,
-    fontFamily: 'JetBrains Mono, monospace',
-    theme: {
-      background: '#101014',
-      foreground: '#e6e6ec',
-    },
+    fontFamily: readCssVariable('--terminal-font-family', 'JetBrains Mono'),
+    fontSize: readTerminalFontSize(),
+    theme: readTerminalTheme(),
   });
 
   const fitAddon = new FitAddon();
@@ -81,6 +113,7 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
     isOpened: false,
   };
   cache.set(terminalId, entry);
+  applyTerminalAppearance(entry);
   return entry;
 };
 
@@ -148,4 +181,10 @@ export const destroyTerminalInstance = (terminalId: TerminalId): void => {
  */
 export const hasTerminalInstance = (terminalId: TerminalId): boolean => {
   return cache.has(terminalId);
+};
+
+export const refreshTerminalAppearance = (): void => {
+  for (const entry of cache.values()) {
+    applyTerminalAppearance(entry);
+  }
 };

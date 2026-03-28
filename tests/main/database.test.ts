@@ -23,6 +23,8 @@ import {
   insertNotification,
   markNotificationRead,
   listUnreadNotifications,
+  listPreferences,
+  upsertPreference,
 } from '@main/db/queries';
 
 const createTestDb = (): InstanceType<typeof Database> => {
@@ -144,6 +146,27 @@ describe('SQLite Database', () => {
       .all() as Array<{ name: string }>;
 
     expect(tables.map((t) => t.name)).toContain('session_events');
+  });
+
+  it('erstellt preferences Tabelle', () => {
+    db = createTestDb();
+
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all() as Array<{ name: string }>;
+
+    expect(tables.map((t) => t.name)).toContain('preferences');
+  });
+
+  it('persistiert Preferences als Key-Value-Eintraege', () => {
+    db = createTestDb();
+
+    upsertPreference(db, 'theme', 'light', 1000);
+    upsertPreference(db, 'uiScale', '110', 2000);
+
+    const rows = listPreferences(db);
+    expect(rows).toContainEqual({ key: 'theme', value: 'light', updated_at: 1000 });
+    expect(rows).toContainEqual({ key: 'uiScale', value: '110', updated_at: 2000 });
   });
 
   it('speichert und listet Events pro Session', () => {

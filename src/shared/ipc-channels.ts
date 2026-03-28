@@ -11,6 +11,8 @@ export const IPC_CHANNELS = {
   workspaceList: 'workspace:list',
   workspaceSwitch: 'workspace:switch',
   workspaceUpdate: 'workspace:update',
+  preferencesGet: 'preferences:get',
+  preferencesSet: 'preferences:set',
   sessionList: 'session:list',
   terminalEvent: 'terminal:event',
   brokerGetContext: 'broker:getContext',

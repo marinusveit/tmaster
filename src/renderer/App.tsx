@@ -17,6 +17,7 @@ import { getOrCreateTerminal } from '@renderer/components/terminal/terminalInsta
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
 import { useAssistant } from '@renderer/hooks/useAssistant';
+import { usePreferences } from '@renderer/hooks/usePreferences';
 import type { SplitMode } from '@renderer/stores/terminalStore';
 import type { QuickSwitcherItem } from '@renderer/utils/quickSwitcher';
 
@@ -79,6 +80,7 @@ export const App = (): JSX.Element => {
   const toggleAssistant = useAssistantStore((s) => s.toggleExpanded);
   const addAssistantMessage = useAssistantStore((s) => s.addMessage);
   useAssistant();
+  usePreferences();
 
   const visibleTerminals: TerminalSessionInfo[] = useMemo(() => {
     return getVisibleTerminals(workspaceTerminals, activeTerminalId, splitMode);

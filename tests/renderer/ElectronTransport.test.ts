@@ -15,6 +15,8 @@ const mockApi = {
   listWorkspaces: vi.fn(),
   switchWorkspace: vi.fn(),
   updateWorkspace: vi.fn(),
+  getPreferences: vi.fn(),
+  setPreference: vi.fn(),
   listSessions: vi.fn(),
   getContext: vi.fn(),
   onConflict: vi.fn(),

@@ -86,6 +86,12 @@ export const runMigrations = (db: BetterSqlite3.Database): void => {
     CREATE INDEX IF NOT EXISTS idx_notifications_timestamp
       ON notifications(timestamp);
 
+    CREATE TABLE IF NOT EXISTS preferences (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sessions_terminal_id
       ON sessions(terminal_id);
 

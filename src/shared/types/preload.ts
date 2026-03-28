@@ -20,6 +20,7 @@ import type { ListSessionsRequest, ListSessionsResponse } from './session';
 import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from './broker';
 import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from './assistant';
 import type { AppNotification } from './notification';
+import type { GetPreferencesResponse, SetPreferenceRequest } from './preferences';
 
 export interface TmasterApi {
   createTerminal: (request: CreateTerminalRequest) => Promise<CreateTerminalResponse>;
@@ -35,6 +36,8 @@ export interface TmasterApi {
   listWorkspaces: () => Promise<ListWorkspacesResponse>;
   switchWorkspace: (workspaceId: string) => Promise<void>;
   updateWorkspace: (request: UpdateWorkspaceRequest) => Promise<Workspace>;
+  getPreferences: () => Promise<GetPreferencesResponse>;
+  setPreference: (request: SetPreferenceRequest) => Promise<GetPreferencesResponse>;
   listSessions: (request: ListSessionsRequest) => Promise<ListSessionsResponse>;
   getContext: (query: ContextQuery) => Promise<ContextResult>;
   onConflict: (handler: (conflict: FileConflict) => void) => () => void;

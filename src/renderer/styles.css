@@ -9,6 +9,7 @@
 
 :root {
   color-scheme: dark;
+  --ui-scale: 1;
 
   /* Background — warm obsidian */
   --bg-base: #0c0c0e;
@@ -71,6 +72,12 @@
   --font-display: 'Sora', 'Segoe UI', system-ui, sans-serif;
   --font-body: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  --terminal-font-family: 'JetBrains Mono';
+  --terminal-font-size: 14;
+  --terminal-bg: #101014;
+  --terminal-fg: #e6e6ec;
+  --terminal-cursor: #e8714a;
+  --terminal-selection: rgba(232, 113, 74, 0.22);
 
   /* Shadows */
   --shadow-glow-active: 0 0 8px rgba(94, 224, 160, 0.45);
@@ -90,6 +97,48 @@
   font-family: var(--font-body);
   background: var(--bg-base);
   color: var(--text-primary);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-base: #efe8dd;
+  --bg-surface: #f8f3eb;
+  --bg-elevated: #fffaf3;
+  --bg-deep: #e7ddcf;
+  --bg-inset: #f0e6d8;
+
+  --border-default: #d5c7b5;
+  --border-subtle: #e5d9ca;
+  --border-focus: #ad5436;
+
+  --text-primary: #31261f;
+  --text-secondary: #6b5b4f;
+  --text-muted: #938575;
+
+  --accent: #b55534;
+  --accent-hover: #c46443;
+  --accent-dim: #964528;
+  --accent-subtle: rgba(181, 85, 52, 0.12);
+  --accent-faint: rgba(181, 85, 52, 0.06);
+  --accent-glow: rgba(181, 85, 52, 0.22);
+
+  --status-active-bg: rgba(94, 224, 160, 0.16);
+  --status-waiting-bg: rgba(245, 178, 77, 0.18);
+  --status-idle-bg: rgba(224, 180, 74, 0.16);
+  --status-exited-bg: rgba(85, 85, 94, 0.14);
+
+  --error-border: #c55f69;
+  --error-bg: #fff1f2;
+  --error-text: #8f2430;
+
+  --shadow-drop-sm: 0 4px 12px rgba(73, 49, 29, 0.08);
+  --shadow-drop-lg: 0 18px 36px rgba(73, 49, 29, 0.14);
+
+  --terminal-bg: #f9f4ed;
+  --terminal-fg: #3d2f24;
+  --terminal-cursor: #b55534;
+  --terminal-selection: rgba(181, 85, 52, 0.18);
 }
 
 /* ============================================================
@@ -218,6 +267,10 @@ body,
   margin: 0;
   width: 100%;
   height: 100%;
+}
+
+html {
+  font-size: calc(16px * var(--ui-scale));
 }
 
 /* Dot-Grid Texture Overlay — Command Center */
@@ -517,6 +570,12 @@ body,
 }
 
 .sidebar__section--assistant {
+  border-top: 1px solid var(--border-default);
+  flex: 0 0 auto;
+  padding: var(--space-sm);
+}
+
+.sidebar__section--settings {
   border-top: 1px solid var(--border-default);
   flex: 0 0 auto;
   padding: var(--space-sm);
@@ -886,7 +945,7 @@ body,
   border: none;
   border-radius: 0;
   overflow: hidden;
-  background: var(--bg-base);
+  background: var(--terminal-bg);
 }
 
 .split-resizer {
@@ -1129,6 +1188,156 @@ body,
   text-align: center;
   padding: 1px 5px;
   font-family: var(--font-mono);
+}
+
+/* ============================================================
+   Settings Panel
+   ============================================================ */
+
+.settings-panel-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.settings-panel__teaser {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--space-sm) var(--space-md);
+  transition:
+    border-color var(--transition-normal),
+    background var(--transition-normal),
+    color var(--transition-normal);
+}
+
+.settings-panel__teaser:hover {
+  border-color: var(--accent-dim);
+  color: var(--text-secondary);
+}
+
+.settings-panel__teaser--active {
+  border-color: var(--accent);
+  background: var(--accent-faint);
+  color: var(--text-primary);
+}
+
+.settings-panel__teaser-icon {
+  font-size: 0.85rem;
+}
+
+.settings-panel__teaser-label {
+  flex: 1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: var(--font-display);
+}
+
+.settings-panel__teaser-badge {
+  min-width: 18px;
+  border-radius: 999px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 2px 6px;
+  text-align: center;
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, var(--accent-faint), transparent 22%),
+    var(--bg-elevated);
+  box-shadow: var(--shadow-drop-sm);
+  animation: slideDown 0.16s ease;
+}
+
+.settings-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-panel__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.settings-panel__label {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: 0.03em;
+}
+
+.settings-panel__value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
+.settings-panel__theme-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.settings-panel__theme-option {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-family: var(--font-display);
+  padding: 7px 6px;
+  transition:
+    border-color var(--transition-normal),
+    color var(--transition-normal),
+    background var(--transition-normal);
+}
+
+.settings-panel__theme-option:hover {
+  border-color: var(--accent-dim);
+  color: var(--text-secondary);
+}
+
+.settings-panel__theme-option--active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: var(--accent-faint);
+}
+
+.settings-panel__range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.settings-panel__select {
+  width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  padding: 8px 10px;
 }
 
 /* ============================================================
