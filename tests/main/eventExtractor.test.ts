@@ -68,10 +68,11 @@ describe('EventExtractor', () => {
 
   it('erkennt Waiting-Muster', () => {
     const extractor = new EventExtractor();
-    const events = extractor.extract('t1', '⏳ waiting for input');
+    const events = extractor.extract('t1', 'Proceed with deploy? ⏳ waiting for input');
 
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe('waiting');
+    expect(events[0]?.summary).toContain('Proceed with deploy?');
   });
 
   it('erkennt mehrere Patterns in einem Chunk', () => {

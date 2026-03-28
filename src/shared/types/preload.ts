@@ -4,6 +4,7 @@ import type {
   CreateTerminalResponse,
   ListTerminalsResponse,
   ResizeTerminalRequest,
+  SendTerminalInputRequest,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalStatusEvent,
@@ -19,11 +20,12 @@ import type { TerminalEvent } from './event';
 import type { ListSessionsRequest, ListSessionsResponse } from './session';
 import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from './broker';
 import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from './assistant';
-import type { AppNotification } from './notification';
+import type { AppNotification, NotificationReplyRequest } from './notification';
 
 export interface TmasterApi {
   createTerminal: (request: CreateTerminalRequest) => Promise<CreateTerminalResponse>;
   writeTerminal: (request: WriteTerminalRequest) => Promise<void>;
+  sendTerminalInput: (request: SendTerminalInputRequest) => Promise<void>;
   resizeTerminal: (request: ResizeTerminalRequest) => Promise<void>;
   closeTerminal: (request: CloseTerminalRequest) => Promise<void>;
   listTerminals: () => Promise<ListTerminalsResponse>;
@@ -46,5 +48,6 @@ export interface TmasterApi {
   onAssistantStreamChunk: (handler: (chunk: AssistantStreamChunk) => void) => () => void;
   onSuggestion: (handler: (suggestion: RichSuggestion) => void) => () => void;
   onNotification: (handler: (notification: AppNotification) => void) => () => void;
+  onNotificationReplyRequest: (handler: (request: NotificationReplyRequest) => void) => () => void;
   dismissNotification: (id: string) => Promise<void>;
 }

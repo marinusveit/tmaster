@@ -11,7 +11,9 @@ export interface AssistantPanelProps {
 export const AssistantTeaser = (): JSX.Element => {
   const isExpanded = useAssistantStore((state) => state.isExpanded);
   const onToggle = useAssistantStore((state) => state.toggleExpanded);
-  const unreadCount = useAssistantStore((state) => state.richSuggestions.length);
+  const unreadCount = useAssistantStore((state) => {
+    return state.richSuggestions.length + state.pendingTerminalReplies.length;
+  });
 
   return (
     <button
@@ -29,11 +31,16 @@ export const AssistantTeaser = (): JSX.Element => {
 export const AssistantPanel = ({ isExpanded, onToggle }: AssistantPanelProps): JSX.Element | null => {
   const messages = useAssistantStore((state) => state.messages);
   const richSuggestions = useAssistantStore((state) => state.richSuggestions);
+  const pendingReplies = useAssistantStore((state) => state.pendingTerminalReplies);
+  const pendingReplyRequest = useAssistantStore((state) => state.pendingReplyRequest);
+  const sendingReplyTerminalIds = useAssistantStore((state) => state.sendingTerminalReplyIds);
   const coachingLevel = useAssistantStore((state) => state.coachingLevel);
   const isTyping = useAssistantStore((state) => state.isTyping);
   const currentDraft = useAssistantStore((state) => state.currentDraft);
   const isExecutingDraft = useAssistantStore((state) => state.isExecutingDraft);
   const sendMessage = useAssistantStore((state) => state.sendMessage);
+  const sendTerminalReply = useAssistantStore((state) => state.sendTerminalReply);
+  const clearPendingReplyRequest = useAssistantStore((state) => state.clearPendingReplyRequest);
   const updateDraft = useAssistantStore((state) => state.updateDraft);
   const updateDraftAgentType = useAssistantStore((state) => state.updateDraftAgentType);
   const executeDraft = useAssistantStore((state) => state.executeDraft);
@@ -73,8 +80,15 @@ export const AssistantPanel = ({ isExpanded, onToggle }: AssistantPanelProps): J
 
         <AssistantChat
           messages={messages}
+          pendingReplies={pendingReplies}
+          pendingReplyRequestTerminalId={pendingReplyRequest?.terminalId ?? null}
+          sendingReplyTerminalIds={sendingReplyTerminalIds}
           isTyping={isTyping}
           onSendMessage={sendMessage}
+          onSendTerminalReply={(terminalId, input) => {
+            void sendTerminalReply(terminalId, input);
+          }}
+          onReplyRequestHandled={clearPendingReplyRequest}
           currentDraft={currentDraft}
           isExecutingDraft={isExecutingDraft}
           onDraftEdit={updateDraft}

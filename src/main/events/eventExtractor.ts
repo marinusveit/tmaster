@@ -45,10 +45,10 @@ const DEFAULT_PATTERNS: EventPattern[] = [
     buildSummary: (match) => `Context window at ${match[1] ?? '?'}%`,
   },
   {
-    regex: /waiting\s+for\s+input|⏳/i,
+    regex: /([^\n]*(?:waiting\s+for\s+input|⏳)[^\n]*)/i,
     type: 'waiting',
     source: 'pattern',
-    buildSummary: () => 'Waiting for input',
+    buildSummary: (match) => match[1]?.trim() ?? 'Waiting for input',
   },
 ];
 

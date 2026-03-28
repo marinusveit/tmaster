@@ -4,6 +4,7 @@ import type {
   CloseTerminalRequest,
   CreateTerminalRequest,
   ResizeTerminalRequest,
+  SendTerminalInputRequest,
   WriteTerminalRequest,
 } from '../../shared/types/terminal';
 import type { TerminalManager } from '../terminal/TerminalManager';
@@ -25,6 +26,11 @@ export const registerTerminalHandlers = (ipcMain: IpcMain, terminalManager: Term
   ipcMain.handle(IPC_CHANNELS.terminalWrite, (_event, payload: unknown) => {
     const request = parseWriteRequest(payload);
     terminalManager.writeTerminal(request.terminalId, request.data);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.terminalSendInput, (_event, payload: unknown) => {
+    const request = parseSendInputRequest(payload);
+    terminalManager.sendInput(request.terminalId, request.input);
   });
 
   ipcMain.handle(IPC_CHANNELS.terminalResize, (_event, payload: unknown) => {
@@ -71,6 +77,20 @@ const parseWriteRequest = (payload: unknown): WriteTerminalRequest => {
   }
 
   return { terminalId, data };
+};
+
+const parseSendInputRequest = (payload: unknown): SendTerminalInputRequest => {
+  if (!isObject(payload)) {
+    throw new Error('Invalid sendInput payload');
+  }
+
+  const terminalId = asString(payload.terminalId);
+  const input = asString(payload.input);
+  if (!terminalId || input === null) {
+    throw new Error('Invalid sendInput payload');
+  }
+
+  return { terminalId, input };
 };
 
 const parseResizeRequest = (payload: unknown): ResizeTerminalRequest => {

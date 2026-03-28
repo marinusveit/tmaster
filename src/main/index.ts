@@ -153,6 +153,9 @@ const bootstrap = async (): Promise<void> => {
       const focusedWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
       focusedWindow?.focus();
     },
+    (request) => {
+      broadcast(IPC_CHANNELS.notificationReplyRequest, request);
+    },
   );
   const outputRingBuffer = new OutputRingBuffer();
   const lastEventTypeByTerminal = new Map<string, EventType>();

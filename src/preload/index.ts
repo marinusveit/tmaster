@@ -7,6 +7,7 @@ import type {
   CreateTerminalResponse,
   ListTerminalsResponse,
   ResizeTerminalRequest,
+  SendTerminalInputRequest,
   TerminalDataEvent,
   TerminalExitEvent,
   TerminalStatusEvent,
@@ -22,7 +23,7 @@ import type { TerminalEvent } from '../shared/types/event';
 import type { ListSessionsRequest, ListSessionsResponse } from '../shared/types/session';
 import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from '../shared/types/broker';
 import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from '../shared/types/assistant';
-import type { AppNotification } from '../shared/types/notification';
+import type { AppNotification, NotificationReplyRequest } from '../shared/types/notification';
 
 const api: TmasterApi = {
   createTerminal: (request: CreateTerminalRequest): Promise<CreateTerminalResponse> => {
@@ -30,6 +31,9 @@ const api: TmasterApi = {
   },
   writeTerminal: (request: WriteTerminalRequest): Promise<void> => {
     return ipcRenderer.invoke(IPC_CHANNELS.terminalWrite, request);
+  },
+  sendTerminalInput: (request: SendTerminalInputRequest): Promise<void> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.terminalSendInput, request);
   },
   resizeTerminal: (request: ResizeTerminalRequest): Promise<void> => {
     return ipcRenderer.invoke(IPC_CHANNELS.terminalResize, request);
@@ -146,6 +150,14 @@ const api: TmasterApi = {
 
     ipcRenderer.on(IPC_CHANNELS.notificationShow, listener);
     return () => ipcRenderer.off(IPC_CHANNELS.notificationShow, listener);
+  },
+  onNotificationReplyRequest: (handler: (request: NotificationReplyRequest) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: NotificationReplyRequest) => {
+      handler(payload);
+    };
+
+    ipcRenderer.on(IPC_CHANNELS.notificationReplyRequest, listener);
+    return () => ipcRenderer.off(IPC_CHANNELS.notificationReplyRequest, listener);
   },
   dismissNotification: (id: string): Promise<void> => {
     return ipcRenderer.invoke(IPC_CHANNELS.notificationDismiss, id);

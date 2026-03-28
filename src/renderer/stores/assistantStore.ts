@@ -10,10 +10,30 @@ import type {
   SuggestionAction,
   SuggestionPriority,
 } from '@shared/types/assistant';
-import type { CreateTerminalResponse, ListTerminalsResponse } from '@shared/types/terminal';
+import type { TerminalEvent } from '@shared/types/event';
+import type { AppNotification, NotificationReplyRequest } from '@shared/types/notification';
+import type {
+  CreateTerminalResponse,
+  ListTerminalsResponse,
+  TerminalDataEvent,
+} from '@shared/types/terminal';
 import { transport } from '@renderer/transport';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useWorkspaceStore } from '@renderer/stores/workspaceStore';
+
+export interface WaitingTerminalReply {
+  terminalId: string;
+  terminalLabel: string;
+  question: string;
+  detectedAt: number;
+  notificationId?: string;
+}
+
+interface PendingReplyRequest {
+  terminalId: string;
+  requestedAt: number;
+  notificationId?: string;
+}
 
 interface AssistantStoreState {
   isExpanded: boolean;
@@ -21,6 +41,9 @@ interface AssistantStoreState {
   lastStreamingMessageId: string | null;
   suggestions: Suggestion[];
   richSuggestions: RichSuggestion[];
+  pendingTerminalReplies: WaitingTerminalReply[];
+  pendingReplyRequest: PendingReplyRequest | null;
+  sendingTerminalReplyIds: string[];
   coachingLevel: CoachingLevel;
   isTyping: boolean;
   currentDraft: PromptDraft | null;
@@ -45,12 +68,21 @@ interface AssistantStoreActions {
   addRichSuggestion: (suggestion: RichSuggestion) => void;
   removeRichSuggestion: (id: string) => void;
   executeSuggestionAction: (suggestionId: string, action: SuggestionAction) => Promise<void>;
+  sendTerminalReply: (terminalId: string, input: string) => Promise<void>;
+  handleTerminalEvent: (event: TerminalEvent) => void;
+  handleTerminalData: (event: TerminalDataEvent) => void;
+  handleTerminalExit: (terminalId: string) => void;
+  handleNotification: (notification: AppNotification) => void;
+  handleNotificationReplyRequest: (request: NotificationReplyRequest) => void;
+  clearPendingReplyRequest: () => void;
   handleStreamChunk: (chunk: AssistantStreamChunk) => void;
 }
 
 export type AssistantStore = AssistantStoreState & AssistantStoreActions;
 
 const MAX_MESSAGES = 500;
+const WAITING_MARKER_REGEX = /waiting\s+for\s+input|⏳/i;
+const ANSI_ESCAPE_REGEX = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
 
 const PRIORITY_ORDER: Record<SuggestionPriority, number> = {
   critical: 0,
@@ -86,6 +118,44 @@ const createAssistantMessage = (content: string): AssistantMessage => {
     content,
     timestamp: Date.now(),
   };
+};
+
+const stripAnsi = (value: string): string => {
+  return value.replace(ANSI_ESCAPE_REGEX, '');
+};
+
+const resolveTerminalLabel = (terminalId: string): string => {
+  const terminal = useTerminalStore.getState().terminals.get(terminalId);
+  if (!terminal) {
+    return terminalId;
+  }
+
+  return `${terminal.label.prefix}${terminal.label.index}`;
+};
+
+const extractWaitingQuestion = (event: Pick<TerminalEvent, 'summary' | 'details'>): string => {
+  const summary = event.summary.trim();
+  if (summary && !WAITING_MARKER_REGEX.test(summary)) {
+    return summary;
+  }
+
+  const lines = event.details
+    ?.split(/\r?\n/)
+    .map((line) => stripAnsi(line).trim())
+    .filter((line) => line.length > 0);
+
+  if (lines) {
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index];
+      if (!line || WAITING_MARKER_REGEX.test(line)) {
+        continue;
+      }
+
+      return line;
+    }
+  }
+
+  return summary || 'Waiting for input';
 };
 
 const TERMINAL_MANAGEMENT_PATTERNS = [
@@ -138,6 +208,38 @@ const removeRichSuggestionFromState = (
   };
 };
 
+const removePendingReplyFromState = (
+  state: AssistantStoreState,
+  terminalId: string,
+): Pick<AssistantStoreState, 'pendingTerminalReplies' | 'sendingTerminalReplyIds' | 'pendingReplyRequest'> => {
+  const pendingReplyRequest = state.pendingReplyRequest?.terminalId === terminalId
+    ? null
+    : state.pendingReplyRequest;
+
+  return {
+    pendingTerminalReplies: state.pendingTerminalReplies.filter((reply) => reply.terminalId !== terminalId),
+    sendingTerminalReplyIds: state.sendingTerminalReplyIds.filter((id) => id !== terminalId),
+    pendingReplyRequest,
+  };
+};
+
+const upsertPendingReply = (
+  replies: WaitingTerminalReply[],
+  nextReply: WaitingTerminalReply,
+): WaitingTerminalReply[] => {
+  const existingIndex = replies.findIndex((reply) => reply.terminalId === nextReply.terminalId);
+  if (existingIndex === -1) {
+    return [nextReply, ...replies].sort((a, b) => b.detectedAt - a.detectedAt);
+  }
+
+  const nextReplies = [...replies];
+  nextReplies[existingIndex] = {
+    ...nextReplies[existingIndex],
+    ...nextReply,
+  };
+  return nextReplies.sort((a, b) => b.detectedAt - a.detectedAt);
+};
+
 const resolveStreamingMessageIndex = (
   messages: AssistantMessage[],
   messageId: string,
@@ -167,6 +269,9 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
   lastStreamingMessageId: null,
   suggestions: [],
   richSuggestions: [],
+  pendingTerminalReplies: [],
+  pendingReplyRequest: null,
+  sendingTerminalReplyIds: [],
   coachingLevel: 'suggest',
   isTyping: false,
   currentDraft: null,
@@ -449,6 +554,115 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
     }
 
     set((state) => removeRichSuggestionFromState(state, suggestionId));
+  },
+
+  sendTerminalReply: async (terminalId, input) => {
+    const normalizedInput = input.replace(/\r\n/g, '\n').trim();
+    if (!normalizedInput) {
+      return;
+    }
+
+    const existingReply = get().pendingTerminalReplies.find((reply) => reply.terminalId === terminalId);
+    const terminalLabel = existingReply?.terminalLabel ?? resolveTerminalLabel(terminalId);
+
+    set((state) => ({
+      sendingTerminalReplyIds: state.sendingTerminalReplyIds.includes(terminalId)
+        ? state.sendingTerminalReplyIds
+        : [...state.sendingTerminalReplyIds, terminalId],
+    }));
+
+    try {
+      await transport.invoke<void>('sendTerminalInput', {
+        terminalId,
+        input: normalizedInput,
+      });
+
+      set((state) => {
+        const nextMessages = [
+          ...state.messages,
+          createAssistantMessage(`Antwort an ${terminalLabel} gesendet.`),
+        ];
+        const cappedMessages = nextMessages.length > MAX_MESSAGES
+          ? nextMessages.slice(-MAX_MESSAGES)
+          : nextMessages;
+
+        return {
+          ...removePendingReplyFromState(state, terminalId),
+          messages: cappedMessages,
+        };
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler beim Senden';
+      set((state) => ({
+        sendingTerminalReplyIds: state.sendingTerminalReplyIds.filter((id) => id !== terminalId),
+        messages: [...state.messages, createAssistantMessage(`Fehler beim Antworten an ${terminalLabel}: ${message}`)],
+      }));
+    }
+  },
+
+  handleTerminalEvent: (event) => {
+    if (event.type !== 'waiting') {
+      return;
+    }
+
+    set((state) => ({
+      pendingTerminalReplies: upsertPendingReply(state.pendingTerminalReplies, {
+        terminalId: event.terminalId,
+        terminalLabel: resolveTerminalLabel(event.terminalId),
+        question: extractWaitingQuestion(event),
+        detectedAt: event.timestamp,
+      }),
+    }));
+  },
+
+  handleTerminalData: (event) => {
+    set((state) => {
+      if (!state.pendingTerminalReplies.some((reply) => reply.terminalId === event.terminalId)) {
+        return state;
+      }
+
+      if (WAITING_MARKER_REGEX.test(event.data)) {
+        return state;
+      }
+
+      return removePendingReplyFromState(state, event.terminalId);
+    });
+  },
+
+  handleTerminalExit: (terminalId) => {
+    set((state) => removePendingReplyFromState(state, terminalId));
+  },
+
+  handleNotification: (notification) => {
+    if (notification.action?.type !== 'reply-terminal' || !notification.terminalId) {
+      return;
+    }
+
+    const terminalId = notification.terminalId;
+    set((state) => ({
+      pendingTerminalReplies: upsertPendingReply(state.pendingTerminalReplies, {
+        terminalId,
+        terminalLabel: resolveTerminalLabel(terminalId),
+        question: notification.body,
+        detectedAt: notification.timestamp,
+        notificationId: notification.id,
+      }),
+    }));
+  },
+
+  handleNotificationReplyRequest: (request) => {
+    set({
+      isExpanded: true,
+      pendingReplyRequest: {
+        terminalId: request.terminalId,
+        notificationId: request.notificationId,
+        requestedAt: Date.now(),
+      },
+    });
+  },
+
+  clearPendingReplyRequest: () => {
+    set({ pendingReplyRequest: null });
   },
 
   handleStreamChunk: (chunk) => {

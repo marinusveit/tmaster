@@ -7,6 +7,7 @@ const createdDesktopNotifications: Array<{
   body: string;
   show: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn>;
+  actions?: Array<{ type: string; text: string }>;
 }> = [];
 
 vi.mock('electron', () => {
@@ -15,12 +16,13 @@ vi.mock('electron', () => {
     public readonly show = vi.fn();
     public readonly on = vi.fn();
 
-    public constructor(options: { title: string; body: string }) {
+    public constructor(options: { title: string; body: string; actions?: Array<{ type: string; text: string }> }) {
       createdDesktopNotifications.push({
         title: options.title,
         body: options.body,
         show: this.show,
         on: this.on,
+        actions: options.actions,
       });
     }
   }
@@ -57,7 +59,7 @@ describe('NotificationManager', () => {
   });
 
   it('notify erstellt Notification mit ID und Timestamp', () => {
-    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn());
+    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn(), vi.fn());
 
     const notification = manager.notify({
       title: 'A',
@@ -72,7 +74,7 @@ describe('NotificationManager', () => {
 
   it('notify speichert in DB und broadcastet', () => {
     const broadcast = vi.fn();
-    const manager = new NotificationManager(db, broadcast, () => true, vi.fn());
+    const manager = new NotificationManager(db, broadcast, () => true, vi.fn(), vi.fn());
 
     manager.notify({ title: 'Save', body: 'Stored', level: 'success', terminalId: 't1' });
 
@@ -83,7 +85,7 @@ describe('NotificationManager', () => {
   });
 
   it('onTerminalEvent erzeugt Notification bei error', () => {
-    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn());
+    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn(), vi.fn());
 
     manager.onTerminalEvent({
       terminalId: 't1',
@@ -99,7 +101,7 @@ describe('NotificationManager', () => {
   });
 
   it('onTerminalEvent ignoriert normale warnings', () => {
-    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn());
+    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn(), vi.fn());
 
     manager.onTerminalEvent({
       terminalId: 't1',
@@ -113,7 +115,7 @@ describe('NotificationManager', () => {
   });
 
   it('onTerminalExit erzeugt success bei exitCode 0', () => {
-    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn());
+    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn(), vi.fn());
 
     manager.onTerminalExit('t1', 0);
     const unread = manager.getUnread();
@@ -123,7 +125,7 @@ describe('NotificationManager', () => {
   });
 
   it('onTerminalExit erzeugt error bei exitCode 1', () => {
-    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn());
+    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn(), vi.fn());
 
     manager.onTerminalExit('t1', 1);
     const unread = manager.getUnread();
@@ -133,7 +135,7 @@ describe('NotificationManager', () => {
   });
 
   it('dismiss markiert Notification als gelesen', () => {
-    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn());
+    const manager = new NotificationManager(db, vi.fn(), () => true, vi.fn(), vi.fn());
     const notification = manager.notify({ title: 'Read', body: 'Me', level: 'info' });
 
     manager.dismiss(notification.id);
@@ -142,7 +144,7 @@ describe('NotificationManager', () => {
   });
 
   it('rate-limited Desktop Notifications pro Terminal', () => {
-    const manager = new NotificationManager(db, vi.fn(), () => false, vi.fn());
+    const manager = new NotificationManager(db, vi.fn(), () => false, vi.fn(), vi.fn());
 
     manager.notify({ title: 'A', body: 'One', level: 'error', terminalId: 't1' });
     manager.notify({ title: 'B', body: 'Two', level: 'error', terminalId: 't1' });
@@ -155,12 +157,53 @@ describe('NotificationManager', () => {
   });
 
   it('Desktop-Notification nur wenn Fenster nicht fokussiert', () => {
-    const managerFocused = new NotificationManager(db, vi.fn(), () => true, vi.fn());
+    const managerFocused = new NotificationManager(db, vi.fn(), () => true, vi.fn(), vi.fn());
     managerFocused.notify({ title: 'No', body: 'Desktop', level: 'info', terminalId: 't1' });
     expect(createdDesktopNotifications).toHaveLength(0);
 
-    const managerUnfocused = new NotificationManager(db, vi.fn(), () => false, vi.fn());
+    const managerUnfocused = new NotificationManager(db, vi.fn(), () => false, vi.fn(), vi.fn());
     managerUnfocused.notify({ title: 'Yes', body: 'Desktop', level: 'info', terminalId: 't2' });
     expect(createdDesktopNotifications).toHaveLength(1);
+  });
+
+  it('waiting-notification nutzt Antworten-Aktion und leitet Reply-Request weiter', () => {
+    const focusMainWindow = vi.fn();
+    const onReplyRequested = vi.fn();
+    const manager = new NotificationManager(db, vi.fn(), () => false, focusMainWindow, onReplyRequested);
+
+    manager.onTerminalEvent({
+      terminalId: 't1',
+      timestamp: Date.now(),
+      type: 'waiting',
+      summary: 'Waiting for input',
+      details: 'Continue deployment?\n⏳ waiting for input',
+      source: 'pattern',
+    });
+
+    vi.advanceTimersByTime(120_000);
+    manager.onTerminalEvent({
+      terminalId: 't1',
+      timestamp: Date.now(),
+      type: 'waiting',
+      summary: 'Waiting for input',
+      details: 'Continue deployment?\n⏳ waiting for input',
+      source: 'pattern',
+    });
+
+    expect(createdDesktopNotifications).toHaveLength(1);
+    expect(createdDesktopNotifications[0]?.actions?.[0]?.text).toBe('Antworten');
+    expect(createdDesktopNotifications[0]?.body).toContain('Continue deployment?');
+
+    const actionHandler = createdDesktopNotifications[0]?.on.mock.calls.find((call) => call[0] === 'action')?.[1] as
+      | ((details: { actionIndex: number }) => void)
+      | undefined;
+
+    actionHandler?.({ actionIndex: 0 });
+
+    expect(focusMainWindow).toHaveBeenCalledTimes(1);
+    expect(onReplyRequested).toHaveBeenCalledWith({
+      notificationId: expect.any(String),
+      terminalId: 't1',
+    });
   });
 });
