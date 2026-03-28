@@ -7,6 +7,7 @@ export const IPC_CHANNELS = {
   terminalExit: 'terminal:exit',
   terminalList: 'terminal:list',
   terminalStatus: 'terminal:status',
+  terminalProtection: 'terminal:protection',
   workspaceCreate: 'workspace:create',
   workspaceList: 'workspace:list',
   workspaceSwitch: 'workspace:switch',

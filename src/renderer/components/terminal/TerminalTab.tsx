@@ -2,12 +2,19 @@ import type { TerminalLabel } from '@shared/types/terminal';
 
 interface TerminalTabProps {
   label: TerminalLabel;
+  hasProtectionWarning: boolean;
   isActive: boolean;
   onSelect: () => void;
   onClose: () => void;
 }
 
-export const TerminalTab = ({ label, isActive, onSelect, onClose }: TerminalTabProps): JSX.Element => {
+export const TerminalTab = ({
+  label,
+  hasProtectionWarning,
+  isActive,
+  onSelect,
+  onClose,
+}: TerminalTabProps): JSX.Element => {
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation();
     onClose();
@@ -27,6 +34,11 @@ export const TerminalTab = ({ label, isActive, onSelect, onClose }: TerminalTabP
       <span className="terminal-tab__label">
         {label.prefix}{label.index}
       </span>
+      {hasProtectionWarning ? (
+        <span className="terminal-tab__badge" aria-hidden="true">
+          SAFE
+        </span>
+      ) : null}
       <span
         className="terminal-tab__close"
         onClick={handleClose}

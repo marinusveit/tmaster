@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { EventType, TerminalEvent } from '../shared/types/event';
+import type { TerminalProtectionEvent } from '../shared/types/terminal';
 import { detectAgentType } from '../common/agent/detectAgentType';
 import { TerminalManager } from './terminal/TerminalManager';
 import { registerTerminalHandlers } from './ipc/registerTerminalHandlers';
@@ -385,6 +386,19 @@ const bootstrap = async (): Promise<void> => {
     },
     onStatusChange: (terminalId, status) => {
       broadcast(IPC_CHANNELS.terminalStatus, { terminalId, status });
+    },
+    onProtectionChange: (event: TerminalProtectionEvent) => {
+      broadcast(IPC_CHANNELS.terminalProtection, event);
+    },
+    onProtectionWarning: (event: TerminalProtectionEvent) => {
+      const workspaceId = terminalManager?.getSession(event.terminalId)?.workspaceId;
+      notificationManager.notify({
+        title: `${event.terminalId} Performance-Schutz aktiv`,
+        body: event.protection.warning ?? 'Terminal-Schutz aktiv.',
+        level: 'warning',
+        terminalId: event.terminalId,
+        workspaceId,
+      });
     },
   });
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TerminalId, TerminalSessionInfo, TerminalStatus } from '@shared/types/terminal';
+import type { TerminalId, TerminalProtectionState, TerminalSessionInfo, TerminalStatus } from '@shared/types/terminal';
 import type { WorkspaceId } from '@shared/types/workspace';
 
 export type SplitMode = 'single' | 'horizontal' | 'vertical' | 'grid';
@@ -21,6 +21,7 @@ interface TerminalStoreActions {
   removeTerminal: (terminalId: TerminalId) => void;
   setActiveTerminal: (terminalId: TerminalId | null) => void;
   updateStatus: (terminalId: TerminalId, status: TerminalStatus) => void;
+  updateProtection: (terminalId: TerminalId, protection: TerminalProtectionState) => void;
   getOrderedTerminals: () => TerminalSessionInfo[];
   getTerminalsByWorkspace: (workspaceId: WorkspaceId) => TerminalSessionInfo[];
   setTerminals: (terminals: TerminalSessionInfo[]) => void;
@@ -71,6 +72,19 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
 
       const next = new Map(state.terminals);
       next.set(terminalId, { ...existing, status });
+      return { terminals: next };
+    });
+  },
+
+  updateProtection: (terminalId, protection) => {
+    set((state) => {
+      const existing = state.terminals.get(terminalId);
+      if (!existing) {
+        return state;
+      }
+
+      const next = new Map(state.terminals);
+      next.set(terminalId, { ...existing, protection });
       return { terminals: next };
     });
   },

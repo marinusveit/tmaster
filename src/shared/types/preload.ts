@@ -6,6 +6,7 @@ import type {
   ResizeTerminalRequest,
   TerminalDataEvent,
   TerminalExitEvent,
+  TerminalProtectionEvent,
   TerminalStatusEvent,
   WriteTerminalRequest,
 } from './terminal';
@@ -30,6 +31,7 @@ export interface TmasterApi {
   onTerminalData: (handler: (event: TerminalDataEvent) => void) => () => void;
   onTerminalExit: (handler: (event: TerminalExitEvent) => void) => () => void;
   onTerminalStatus: (handler: (event: TerminalStatusEvent) => void) => () => void;
+  onTerminalProtection: (handler: (event: TerminalProtectionEvent) => void) => () => void;
   onTerminalEvent: (handler: (event: TerminalEvent) => void) => () => void;
   createWorkspace: (request: CreateWorkspaceRequest) => Promise<Workspace>;
   listWorkspaces: () => Promise<ListWorkspacesResponse>;

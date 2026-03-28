@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { DEFAULT_TERMINAL_SCROLLBACK } from '@shared/constants/defaults';
 import type {
   AssistantMessage,
   AssistantStreamChunk,
@@ -220,6 +221,8 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
             workspaceId: response.workspaceId,
             status: 'active',
             createdAt: Date.now(),
+            scrollback: response.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK,
+            protection: response.protection,
           });
           terminalStore.setActiveTerminal(response.terminalId);
 

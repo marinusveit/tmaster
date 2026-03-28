@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IPty } from 'node-pty';
 import { spawn } from 'node-pty';
 import { TerminalManager } from '@main/terminal/TerminalManager';
+import { DEFAULT_TERMINAL_SCROLLBACK } from '@shared/constants/defaults';
 
 interface FakePty extends IPty {
   emitData: (data: string) => void;
@@ -86,6 +87,25 @@ describe('TerminalManager', () => {
     manager.closeTerminal(terminalId);
 
     expect(fakePtys[0]?.kill).toHaveBeenCalledTimes(1);
+    manager.destroyAll();
+  });
+
+  it('setzt Scrollback standardmäßig auf 5000 und erlaubt Overrides pro Terminal', () => {
+    const manager = new TerminalManager({
+      onData: vi.fn(),
+      onExit: vi.fn(),
+    });
+
+    const defaultTerminal = manager.createTerminal({});
+    const customTerminal = manager.createTerminal({ scrollback: 12000 });
+
+    expect(defaultTerminal.scrollback).toBe(DEFAULT_TERMINAL_SCROLLBACK);
+    expect(customTerminal.scrollback).toBe(12000);
+
+    const listed = manager.listTerminals();
+    expect(listed[0]?.scrollback).toBe(DEFAULT_TERMINAL_SCROLLBACK);
+    expect(listed[1]?.scrollback).toBe(12000);
+
     manager.destroyAll();
   });
 
@@ -264,6 +284,46 @@ describe('TerminalManager', () => {
 
     expect(manager.getSessionCount()).toBe(0);
     expect(() => manager.createTerminal({})).toThrow('disposed');
+  });
+
+  it('aktiviert Schutzmodus nur fuer das betroffene Terminal bei Output-Bursts', () => {
+    const onProtectionChange = vi.fn();
+    const onProtectionWarning = vi.fn();
+    const manager = new TerminalManager({
+      onData: vi.fn(),
+      onExit: vi.fn(),
+      onProtectionChange,
+      onProtectionWarning,
+    });
+
+    const first = manager.createTerminal({});
+    const second = manager.createTerminal({});
+
+    fakePtys[0]?.emitData('x'.repeat((1024 * 1024) + 64));
+
+    expect(onProtectionChange).toHaveBeenCalledWith({
+      terminalId: first.terminalId,
+      protection: expect.objectContaining({
+        renderMode: 'throttled',
+        isProtectionActive: true,
+      }),
+    });
+    expect(onProtectionWarning).toHaveBeenCalledTimes(1);
+    expect(onProtectionChange).not.toHaveBeenCalledWith(expect.objectContaining({
+      terminalId: second.terminalId,
+    }));
+
+    vi.advanceTimersByTime(1100);
+
+    expect(onProtectionChange).toHaveBeenLastCalledWith({
+      terminalId: first.terminalId,
+      protection: expect.objectContaining({
+        renderMode: 'realtime',
+        warning: null,
+      }),
+    });
+
+    manager.destroyAll();
   });
 
   it('räumt bei natürlichem Prozess-Exit (exit) korrekt auf', () => {

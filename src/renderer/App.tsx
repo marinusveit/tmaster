@@ -16,6 +16,17 @@ import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
 import { useAssistant } from '@renderer/hooks/useAssistant';
 import type { SplitMode } from '@renderer/stores/terminalStore';
+import { DEFAULT_TERMINAL_SCROLLBACK } from '@shared/constants/defaults';
+import type { TerminalProtectionState } from '@shared/types/terminal';
+
+const areTerminalProtectionsEqual = (
+  left?: TerminalProtectionState,
+  right?: TerminalProtectionState,
+): boolean => {
+  return (left?.renderMode ?? 'realtime') === (right?.renderMode ?? 'realtime')
+    && (left?.isProtectionActive ?? false) === (right?.isProtectionActive ?? false)
+    && (left?.warning ?? null) === (right?.warning ?? null);
+};
 
 export const App = (): JSX.Element => {
   const {
@@ -48,7 +59,13 @@ export const App = (): JSX.Element => {
     const prev = prevWorkspaceTerminalsRef.current;
     if (
       prev.length === rawWorkspaceTerminals.length
-      && prev.every((t, i) => t.terminalId === rawWorkspaceTerminals[i]?.terminalId && t.status === rawWorkspaceTerminals[i]?.status)
+      && prev.every((t, i) => {
+        const next = rawWorkspaceTerminals[i];
+        return t.terminalId === next?.terminalId
+          && t.status === next.status
+          && (t.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK) === (next.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK)
+          && areTerminalProtectionsEqual(t.protection, next.protection);
+      })
     ) {
       return prev;
     }
@@ -61,7 +78,13 @@ export const App = (): JSX.Element => {
     const prev = prevAllTerminalsRef.current;
     if (
       prev.length === rawAllTerminals.length
-      && prev.every((t, i) => t.terminalId === rawAllTerminals[i]?.terminalId && t.status === rawAllTerminals[i]?.status)
+      && prev.every((t, i) => {
+        const next = rawAllTerminals[i];
+        return t.terminalId === next?.terminalId
+          && t.status === next.status
+          && (t.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK) === (next.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK)
+          && areTerminalProtectionsEqual(t.protection, next.protection);
+      })
     ) {
       return prev;
     }
@@ -122,7 +145,7 @@ export const App = (): JSX.Element => {
         className={`terminal-area__view-wrapper${isActive ? ' terminal-area__view-wrapper--active' : ''}`}
         onMouseDown={() => switchTerminal(terminal.terminalId)}
       >
-        <TerminalView terminalId={terminal.terminalId} />
+        <TerminalView terminal={terminal} />
       </div>
     );
   }, [activeTerminalId, switchTerminal]);

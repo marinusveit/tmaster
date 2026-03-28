@@ -9,6 +9,7 @@ import type {
   ResizeTerminalRequest,
   TerminalDataEvent,
   TerminalExitEvent,
+  TerminalProtectionEvent,
   TerminalStatusEvent,
   WriteTerminalRequest,
 } from '../shared/types/terminal';
@@ -63,6 +64,14 @@ const api: TmasterApi = {
 
     ipcRenderer.on(IPC_CHANNELS.terminalStatus, listener);
     return () => ipcRenderer.off(IPC_CHANNELS.terminalStatus, listener);
+  },
+  onTerminalProtection: (handler: (event: TerminalProtectionEvent) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: TerminalProtectionEvent) => {
+      handler(payload);
+    };
+
+    ipcRenderer.on(IPC_CHANNELS.terminalProtection, listener);
+    return () => ipcRenderer.off(IPC_CHANNELS.terminalProtection, listener);
   },
   onTerminalEvent: (handler: (event: TerminalEvent) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: TerminalEvent) => {

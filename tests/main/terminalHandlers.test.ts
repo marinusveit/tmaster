@@ -27,6 +27,7 @@ const createTerminalManagerMock = () => {
       terminalId: 't-1',
       label: { prefix: 'T', index: 1 },
       workspaceId: 'ws-1',
+      scrollback: 5000,
     })),
     writeTerminal: vi.fn(),
     resizeTerminal: vi.fn(),
@@ -41,18 +42,21 @@ describe('registerTerminalHandlers', () => {
     const terminalManager = createTerminalManagerMock();
     registerTerminalHandlers(ipcMain as never, terminalManager as never);
 
-    const result = ipcMain.invoke(IPC_CHANNELS.terminalCreate, { cwd: '/tmp', workspaceId: 'ws-1' }) as {
+    const result = ipcMain.invoke(IPC_CHANNELS.terminalCreate, { cwd: '/tmp', workspaceId: 'ws-1', scrollback: 9000 }) as {
       terminalId: string;
       workspaceId: string;
+      scrollback: number;
     };
 
     expect(result.terminalId).toBe('t-1');
     expect(result.workspaceId).toBe('ws-1');
+    expect(result.scrollback).toBe(5000);
     expect(terminalManager.createTerminal).toHaveBeenCalledWith({
       cwd: '/tmp',
       shell: undefined,
       workspaceId: 'ws-1',
       label: undefined,
+      scrollback: 9000,
     });
   });
 
@@ -63,6 +67,14 @@ describe('registerTerminalHandlers', () => {
 
     ipcMain.invoke(IPC_CHANNELS.terminalCreate, null);
     expect(terminalManager.createTerminal).toHaveBeenCalledWith({});
+  });
+
+  it('wirft bei ungueltigem create payload fuer scrollback', () => {
+    const ipcMain = createMockIpcMain();
+    const terminalManager = createTerminalManagerMock();
+    registerTerminalHandlers(ipcMain as never, terminalManager as never);
+
+    expect(() => ipcMain.invoke(IPC_CHANNELS.terminalCreate, { scrollback: 'nope' })).toThrow('Invalid create payload');
   });
 
   it('schreibt in ein Terminal via IPC', () => {

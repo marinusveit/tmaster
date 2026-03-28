@@ -9,10 +9,28 @@ import type {
   TerminalExitEvent,
   TerminalId,
   TerminalLabel,
+  TerminalProtectionEvent,
+  TerminalProtectionState,
   TerminalSessionInfo,
 } from '../../shared/types/terminal';
 import type { WorkspaceId } from '../../shared/types/workspace';
-import { MAX_TERMINALS, TERMINAL_LABEL_PREFIX } from '../../shared/constants/defaults';
+import {
+  DEFAULT_TERMINAL_SCROLLBACK,
+  MAX_TERMINALS,
+  MAX_TERMINAL_SCROLLBACK,
+  MIN_TERMINAL_SCROLLBACK,
+  TERMINAL_LABEL_PREFIX,
+  TERMINAL_OUTPUT_RECOVERY_BYTES_PER_SECOND,
+  TERMINAL_OUTPUT_SAMPLE_WINDOW_MS,
+  TERMINAL_OUTPUT_THROTTLE_BYTES_PER_SECOND,
+  TERMINAL_PENDING_BUFFER_WARNING_BYTES,
+  TERMINAL_PROTECTION_WARNING_COOLDOWN_MS,
+} from '../../shared/constants/defaults';
+
+interface OutputSample {
+  timestamp: number;
+  bytes: number;
+}
 
 interface TerminalSession {
   pty: IPty;
@@ -22,12 +40,20 @@ interface TerminalSession {
   status: 'active' | 'idle' | 'exited';
   createdAt: number;
   lastActivity: number;
+  scrollback: number;
+  protection: TerminalProtectionState;
+  pendingBufferBytes: number;
+  recentOutput: OutputSample[];
+  recentOutputBytes: number;
+  lastProtectionWarningAt: number;
 }
 
 interface TerminalManagerCallbacks {
   onData: (event: TerminalDataEvent) => void;
   onExit: (event: TerminalExitEvent) => void;
   onStatusChange?: (terminalId: TerminalId, status: 'active' | 'idle' | 'exited') => void;
+  onProtectionChange?: (event: TerminalProtectionEvent) => void;
+  onProtectionWarning?: (event: TerminalProtectionEvent) => void;
 }
 
 export class TerminalManager {
@@ -37,6 +63,13 @@ export class TerminalManager {
   private readonly labelCounters = new Map<WorkspaceId, number>();
   private isDisposed = false;
   private static readonly DEFAULT_WORKSPACE_ID = 'default';
+  private static readonly DEFAULT_PROTECTION_STATE: TerminalProtectionState = {
+    renderMode: 'realtime',
+    isProtectionActive: false,
+    outputBytesPerSecond: 0,
+    pendingBufferBytes: 0,
+    warning: null,
+  };
 
   public constructor(private readonly callbacks: TerminalManagerCallbacks) {
     // 16ms Batching zum Schutz der Renderer-Event-Queue.
@@ -71,6 +104,7 @@ export class TerminalManager {
     const workspaceId = request.workspaceId ?? TerminalManager.DEFAULT_WORKSPACE_ID;
     const label = this.getNextLabel(workspaceId);
     const shell = request.shell ?? this.getDefaultShell();
+    const scrollback = this.normalizeScrollback(request.scrollback);
     const pty = spawn(shell, [], {
       name: 'xterm-256color',
       cols: 80,
@@ -89,10 +123,14 @@ export class TerminalManager {
       if (!chunks) {
         return;
       }
+      const dataBytes = Buffer.byteLength(data, 'utf8');
       chunks.push(data);
       const currentSession = this.sessions.get(terminalId);
       if (currentSession) {
         currentSession.lastActivity = Date.now();
+        currentSession.pendingBufferBytes += dataBytes;
+        this.recordOutputSample(currentSession, currentSession.lastActivity, dataBytes);
+        this.recalculateProtectionState(terminalId, currentSession);
       }
     });
 
@@ -104,6 +142,12 @@ export class TerminalManager {
       status: 'active',
       createdAt: Date.now(),
       lastActivity: Date.now(),
+      scrollback,
+      protection: { ...TerminalManager.DEFAULT_PROTECTION_STATE },
+      pendingBufferBytes: 0,
+      recentOutput: [],
+      recentOutputBytes: 0,
+      lastProtectionWarningAt: 0,
     };
     this.sessions.set(terminalId, session);
 
@@ -128,7 +172,13 @@ export class TerminalManager {
       this.callbacks.onExit({ terminalId, exitCode, signal });
     });
 
-    return { terminalId, label, workspaceId };
+    return {
+      terminalId,
+      label,
+      workspaceId,
+      scrollback,
+      protection: { ...session.protection },
+    };
   }
 
   public writeTerminal(terminalId: TerminalId, data: string): void {
@@ -169,6 +219,8 @@ export class TerminalManager {
       workspaceId: session.workspaceId,
       status: session.status,
       createdAt: session.createdAt,
+      scrollback: session.scrollback,
+      protection: { ...session.protection },
     }));
   }
 
@@ -185,6 +237,8 @@ export class TerminalManager {
         workspaceId: session.workspaceId,
         status: session.status,
         createdAt: session.createdAt,
+        scrollback: session.scrollback,
+        protection: { ...session.protection },
         lastActivity: session.lastActivity,
       });
     }
@@ -204,6 +258,8 @@ export class TerminalManager {
       workspaceId: session.workspaceId,
       status: session.status,
       createdAt: session.createdAt,
+      scrollback: session.scrollback,
+      protection: { ...session.protection },
       lastActivity: session.lastActivity,
     };
   }
@@ -234,6 +290,10 @@ export class TerminalManager {
   }
 
   private flushBuffers(): void {
+    for (const [terminalId, session] of this.sessions) {
+      this.recalculateProtectionState(terminalId, session);
+    }
+
     for (const [terminalId, chunks] of this.buffers) {
       if (chunks.length === 0) {
         continue;
@@ -241,6 +301,11 @@ export class TerminalManager {
 
       const data = chunks.join('');
       chunks.length = 0;
+      const session = this.sessions.get(terminalId);
+      if (session) {
+        session.pendingBufferBytes = 0;
+        this.recalculateProtectionState(terminalId, session);
+      }
       this.callbacks.onData({ terminalId, data });
     }
   }
@@ -257,6 +322,91 @@ export class TerminalManager {
   private static readonly STRIPPED_ENV_VARS = new Set([
     'CLAUDECODE',
   ]);
+
+  private normalizeScrollback(scrollback?: number): number {
+    if (typeof scrollback !== 'number' || !Number.isFinite(scrollback)) {
+      return DEFAULT_TERMINAL_SCROLLBACK;
+    }
+
+    const normalized = Math.round(scrollback);
+    return Math.min(MAX_TERMINAL_SCROLLBACK, Math.max(MIN_TERMINAL_SCROLLBACK, normalized));
+  }
+
+  private recordOutputSample(session: TerminalSession, timestamp: number, bytes: number): void {
+    session.recentOutput.push({ timestamp, bytes });
+    session.recentOutputBytes += bytes;
+    this.trimOutputSamples(session, timestamp);
+  }
+
+  private trimOutputSamples(session: TerminalSession, now: number): void {
+    while (session.recentOutput.length > 0) {
+      const oldest = session.recentOutput[0];
+      if (!oldest || now - oldest.timestamp < TERMINAL_OUTPUT_SAMPLE_WINDOW_MS) {
+        break;
+      }
+
+      session.recentOutput.shift();
+      session.recentOutputBytes -= oldest.bytes;
+    }
+  }
+
+  private recalculateProtectionState(terminalId: TerminalId, session: TerminalSession): void {
+    const now = Date.now();
+    this.trimOutputSamples(session, now);
+
+    const outputBytesPerSecond = session.recentOutputBytes;
+    const nextRenderMode = session.protection.renderMode === 'throttled'
+      ? (outputBytesPerSecond <= TERMINAL_OUTPUT_RECOVERY_BYTES_PER_SECOND ? 'realtime' : 'throttled')
+      : (outputBytesPerSecond >= TERMINAL_OUTPUT_THROTTLE_BYTES_PER_SECOND ? 'throttled' : 'realtime');
+
+    const hasBufferPressure = session.pendingBufferBytes >= TERMINAL_PENDING_BUFFER_WARNING_BYTES;
+    const warning = this.buildProtectionWarning(nextRenderMode, hasBufferPressure);
+    const nextProtection: TerminalProtectionState = {
+      renderMode: nextRenderMode,
+      isProtectionActive: warning !== null,
+      outputBytesPerSecond,
+      pendingBufferBytes: session.pendingBufferBytes,
+      warning,
+    };
+
+    const previousProtection = session.protection;
+    session.protection = nextProtection;
+
+    const hasMeaningfulChange = previousProtection.renderMode !== nextProtection.renderMode
+      || previousProtection.isProtectionActive !== nextProtection.isProtectionActive
+      || previousProtection.warning !== nextProtection.warning;
+
+    if (hasMeaningfulChange) {
+      this.callbacks.onProtectionChange?.({
+        terminalId,
+        protection: { ...nextProtection },
+      });
+    }
+
+    const warningActivated = nextProtection.warning !== null && previousProtection.warning === null;
+    if (warningActivated && (now - session.lastProtectionWarningAt >= TERMINAL_PROTECTION_WARNING_COOLDOWN_MS)) {
+      session.lastProtectionWarningAt = now;
+      this.callbacks.onProtectionWarning?.({
+        terminalId,
+        protection: { ...nextProtection },
+      });
+    }
+  }
+
+  private buildProtectionWarning(
+    renderMode: TerminalProtectionState['renderMode'],
+    hasBufferPressure: boolean,
+  ): string | null {
+    if (renderMode === 'throttled') {
+      return 'High-output protection active. Rendering is throttled to keep this terminal responsive.';
+    }
+
+    if (hasBufferPressure) {
+      return 'Terminal buffer pressure is high. RAM protection is limiting backlog growth.';
+    }
+
+    return null;
+  }
 
   private buildEnvironment(): Record<string, string> {
     const entries = Object.entries(process.env).filter(

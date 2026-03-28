@@ -1,8 +1,16 @@
 import { useCallback, useEffect } from 'react';
+import { DEFAULT_TERMINAL_SCROLLBACK } from '@shared/constants/defaults';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { transport } from '@renderer/transport';
 import { destroyTerminalInstance } from '@renderer/components/terminal/terminalInstances';
-import type { CreateTerminalRequest, CreateTerminalResponse, ListTerminalsResponse, TerminalExitEvent, TerminalStatusEvent } from '@shared/types/terminal';
+import type {
+  CreateTerminalRequest,
+  CreateTerminalResponse,
+  ListTerminalsResponse,
+  TerminalExitEvent,
+  TerminalProtectionEvent,
+  TerminalStatusEvent,
+} from '@shared/types/terminal';
 
 export const useTerminals = () => {
   const {
@@ -12,6 +20,7 @@ export const useTerminals = () => {
     removeTerminal,
     setActiveTerminal,
     updateStatus,
+    updateProtection,
     getOrderedTerminals,
     getTerminalsByWorkspace,
     setTerminals,
@@ -30,11 +39,16 @@ export const useTerminals = () => {
       updateStatus(event.terminalId, event.status);
     });
 
+    const unsubProtection = transport.on<TerminalProtectionEvent>('onTerminalProtection', (event) => {
+      updateProtection(event.terminalId, event.protection);
+    });
+
     return () => {
       unsubExit();
       unsubStatus();
+      unsubProtection();
     };
-  }, [removeTerminal, updateStatus]);
+  }, [removeTerminal, updateProtection, updateStatus]);
 
   const createTerminal = useCallback(async (request: CreateTerminalRequest = {}): Promise<CreateTerminalResponse> => {
     const response = await transport.invoke<CreateTerminalResponse>('createTerminal', request);
@@ -44,6 +58,8 @@ export const useTerminals = () => {
       workspaceId: response.workspaceId,
       status: 'active',
       createdAt: Date.now(),
+      scrollback: response.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK,
+      protection: response.protection,
     });
     setActiveTerminal(response.terminalId);
     return response;

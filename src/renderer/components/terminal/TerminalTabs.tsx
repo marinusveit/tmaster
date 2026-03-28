@@ -23,6 +23,7 @@ export const TerminalTabs = ({
           <TerminalTab
             key={terminal.terminalId}
             label={terminal.label}
+            hasProtectionWarning={terminal.protection?.isProtectionActive === true}
             isActive={terminal.terminalId === activeTerminalId}
             onSelect={() => onSelect(terminal.terminalId)}
             onClose={() => onClose(terminal.terminalId)}
