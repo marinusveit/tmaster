@@ -4,6 +4,7 @@ import { ElectronTransport } from '@renderer/transport/ElectronTransport';
 const mockApi = {
   createTerminal: vi.fn(),
   writeTerminal: vi.fn(),
+  sendTerminalInput: vi.fn(),
   resizeTerminal: vi.fn(),
   closeTerminal: vi.fn(),
   listTerminals: vi.fn(),
@@ -22,9 +23,13 @@ const mockApi = {
   onConflict: vi.fn(),
   onFileChange: vi.fn(),
   sendAssistantMessage: vi.fn(),
+  generatePrompt: vi.fn(),
+  executePrompt: vi.fn(),
   onAssistantMessage: vi.fn(),
+  onAssistantStreamChunk: vi.fn(),
   onSuggestion: vi.fn(),
   onNotification: vi.fn(),
+  onNotificationReplyRequest: vi.fn(),
   dismissNotification: vi.fn(),
 };
 

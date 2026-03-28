@@ -55,6 +55,7 @@ const createTerminalManagerMock = () => {
       displayOrder: 1,
     })),
     writeTerminal: vi.fn(),
+    sendInput: vi.fn(),
     resizeTerminal: vi.fn(),
     closeTerminal: vi.fn(),
     reorderTerminals: vi.fn(),
@@ -165,6 +166,25 @@ describe('registerTerminalHandlers', () => {
 
     expect(() => ipcMain.invoke(IPC_CHANNELS.terminalWrite, { terminalId: 't-1' })).toThrow(
       'Invalid write payload',
+    );
+  });
+
+  it('sendet Terminal-Input via IPC', () => {
+    const ipcMain = createMockIpcMain();
+    const terminalManager = createTerminalManagerMock();
+    registerTerminalHandlers(ipcMain as never, terminalManager as never);
+
+    ipcMain.invoke(IPC_CHANNELS.terminalSendInput, { terminalId: 't-1', input: 'yes' });
+    expect(terminalManager.sendInput).toHaveBeenCalledWith('t-1', 'yes');
+  });
+
+  it('wirft bei ungültigem sendInput payload', () => {
+    const ipcMain = createMockIpcMain();
+    const terminalManager = createTerminalManagerMock();
+    registerTerminalHandlers(ipcMain as never, terminalManager as never);
+
+    expect(() => ipcMain.invoke(IPC_CHANNELS.terminalSendInput, { terminalId: 't-1' })).toThrow(
+      'Invalid sendInput payload',
     );
   });
 

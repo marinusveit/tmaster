@@ -45,7 +45,7 @@ const DEFAULT_PATTERNS: EventPattern[] = [
     buildSummary: (match) => `Context window at ${match[1] ?? '?'}%`,
   },
   {
-    regex: /waiting\s+for\s+input|⏳/i,
+    regex: /([^\n]*(?:waiting\s+for\s+input|⏳)[^\n]*)/i,
     type: 'waiting',
     source: 'pattern',
     buildSummary: (_match, data) => extractWaitingSummary(data),
@@ -62,6 +62,12 @@ const truncate = (text: string, maxLength: number): string => {
 
 const GENERIC_WAITING_SUMMARY_REGEX = /^(?:⏳\s*)?waiting\s+for\s+input$/i;
 const WAITING_CONTEXT_REGEX = /(?:\?\s*(?:\[[Yy]\/[Nn]\]|\[[Yy]es\/[Nn]o\]|\([Yy]\/[Nn]\)|\(yes\/no\))?|press\s+enter|hit\s+enter|confirm|continue|proceed|overwrite|delete|install|retry)/i;
+const WAITING_TRAILING_MARKER_REGEX = /\s*(?:⏳\s*)?waiting\s+for\s+input\s*$/i;
+
+const sanitizeWaitingLine = (line: string): string => {
+  const sanitizedLine = line.replace(WAITING_TRAILING_MARKER_REGEX, '').trim();
+  return sanitizedLine.length > 0 ? sanitizedLine : line.trim();
+};
 
 const extractWaitingSummary = (data: string): string => {
   const lines = data
@@ -76,16 +82,16 @@ const extractWaitingSummary = (data: string): string => {
     }
 
     if (WAITING_CONTEXT_REGEX.test(line) && !GENERIC_WAITING_SUMMARY_REGEX.test(line)) {
-      return line;
+      return sanitizeWaitingLine(line);
     }
 
     if (line.includes('?') && !GENERIC_WAITING_SUMMARY_REGEX.test(line)) {
-      return line;
+      return sanitizeWaitingLine(line);
     }
   }
 
   const contextualLine = lines.find((line) => !GENERIC_WAITING_SUMMARY_REGEX.test(line));
-  return contextualLine ?? 'Waiting for input';
+  return contextualLine ? sanitizeWaitingLine(contextualLine) : 'Waiting for input';
 };
 
 export class EventExtractor {

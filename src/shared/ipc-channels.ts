@@ -1,6 +1,7 @@
 export const IPC_CHANNELS = {
   terminalCreate: 'terminal:create',
   terminalWrite: 'terminal:write',
+  terminalSendInput: 'terminal:sendInput',
   terminalResize: 'terminal:resize',
   terminalClose: 'terminal:close',
   terminalReorder: 'terminal:reorder',
@@ -32,6 +33,7 @@ export const IPC_CHANNELS = {
   assistantSuggestion: 'assistant:suggestion',
   notificationShow: 'notification:show',
   notificationDismiss: 'notification:dismiss',
+  notificationReplyRequest: 'notification:replyRequest',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { Notification } from 'electron';
 import type BetterSqlite3 from 'better-sqlite3';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
-import type { AppNotification, NotificationLevel } from '../../shared/types/notification';
+import type {
+  AppNotification,
+  NotificationAction,
+  NotificationLevel,
+  NotificationReplyRequest,
+} from '../../shared/types/notification';
 import type { TerminalEvent } from '../../shared/types/event';
 import {
   insertNotification,
@@ -17,6 +22,7 @@ interface NotifyParams {
   level: NotificationLevel;
   terminalId?: string;
   workspaceId?: string;
+  action?: NotificationAction;
 }
 
 interface TerminalNotificationContext {
@@ -32,6 +38,8 @@ interface WaitingNotificationSnapshot {
 const DESKTOP_RATE_LIMIT_MS = 30_000;
 const WAITING_NOTIFICATION_COOLDOWN_MS = 30_000;
 const GENERIC_WAITING_SUMMARY_REGEX = /^(?:⏳\s*)?waiting\s+for\s+input$/i;
+const WAITING_MARKER_REGEX = /waiting\s+for\s+input|⏳/i;
+const ANSI_ESCAPE_REGEX = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
 
 const parseContextPercentage = (summary: string): number | null => {
   const match = summary.match(/(\d+)%/);
@@ -56,25 +64,40 @@ const toAppNotification = (row: NotificationRow): AppNotification => {
   };
 };
 
-const extractWaitingPrompt = (event: TerminalEvent): string => {
-  const summary = event.summary.trim();
-  if (summary.length > 0 && !GENERIC_WAITING_SUMMARY_REGEX.test(summary)) {
+const stripAnsi = (value: string): string => {
+  return value.replace(ANSI_ESCAPE_REGEX, '');
+};
+
+const extractWaitingPrompt = (event: Pick<TerminalEvent, 'summary' | 'details'>): string => {
+  const summary = stripAnsi(event.summary.trim());
+  if (summary.length > 0 && !GENERIC_WAITING_SUMMARY_REGEX.test(summary) && !WAITING_MARKER_REGEX.test(summary)) {
     return summary;
   }
 
   const lines = event.details
     ?.split(/\r?\n/)
-    .map((line) => line.trim())
+    .map((line) => stripAnsi(line).trim())
     .filter((line) => line.length > 0) ?? [];
 
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
-    if (line && !GENERIC_WAITING_SUMMARY_REGEX.test(line)) {
+    if (line && !GENERIC_WAITING_SUMMARY_REGEX.test(line) && !WAITING_MARKER_REGEX.test(line)) {
       return line;
     }
   }
 
-  return 'Wartet auf Input';
+  return summary.length > 0 && !GENERIC_WAITING_SUMMARY_REGEX.test(summary)
+    ? summary
+    : 'Wartet auf Input';
+};
+
+const readActionIndex = (value: unknown): number | null => {
+  if (typeof value !== 'object' || value === null || !('actionIndex' in value)) {
+    return null;
+  }
+
+  const actionIndex = value.actionIndex;
+  return typeof actionIndex === 'number' ? actionIndex : null;
 };
 
 export class NotificationManager {
@@ -88,6 +111,7 @@ export class NotificationManager {
     private readonly focusMainWindow: () => void,
     private readonly getTerminalContext?: (terminalId: string) => TerminalNotificationContext | undefined,
     private readonly getWaitingResponseHint?: (event: TerminalEvent) => string | null,
+    private readonly onReplyRequested?: (request: NotificationReplyRequest) => void,
   ) {}
 
   public notify(params: NotifyParams): AppNotification {
@@ -100,6 +124,7 @@ export class NotificationManager {
       workspaceId: params.workspaceId,
       timestamp: Date.now(),
       isRead: false,
+      action: params.action,
     };
 
     insertNotification(this.db, {
@@ -202,6 +227,11 @@ export class NotificationManager {
         level: 'warning',
         terminalId: event.terminalId,
         workspaceId: terminalContext?.workspaceId,
+        action: {
+          label: 'Antworten',
+          type: 'reply-terminal',
+          payload: event.terminalId,
+        },
       });
     }
   }
@@ -256,13 +286,36 @@ export class NotificationManager {
 
     this.desktopRateLimit.set(rateKey, notification.timestamp);
 
+    const isReplyNotification = notification.action?.type === 'reply-terminal' && typeof notification.terminalId === 'string';
     const desktopNotification = new Notification({
       title: notification.title,
       body: notification.body,
+      actions: isReplyNotification
+        ? [{ type: 'button', text: notification.action?.label ?? 'Antworten' }]
+        : undefined,
     });
 
     desktopNotification.on('click', () => {
       this.focusMainWindow();
+      if (isReplyNotification && notification.terminalId) {
+        this.onReplyRequested?.({
+          notificationId: notification.id,
+          terminalId: notification.terminalId,
+        });
+      }
+    });
+
+    desktopNotification.on('action', (details) => {
+      const actionIndex = readActionIndex(details);
+      if (!isReplyNotification || !notification.terminalId || actionIndex !== 0) {
+        return;
+      }
+
+      this.focusMainWindow();
+      this.onReplyRequested?.({
+        notificationId: notification.id,
+        terminalId: notification.terminalId,
+      });
     });
 
     desktopNotification.show();

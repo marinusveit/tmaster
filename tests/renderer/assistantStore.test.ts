@@ -21,6 +21,10 @@ describe('assistantStore', () => {
     useAssistantStore.setState({
       isExpanded: false,
       messages: [],
+      lastStreamingMessageId: null,
+      pendingTerminalReplies: [],
+      pendingReplyRequest: null,
+      sendingTerminalReplyIds: [],
       suggestions: [],
       richSuggestions: [],
       coachingLevel: 'suggest',
@@ -157,6 +161,72 @@ describe('assistantStore', () => {
       terminalId: 't5',
       data: 'Bitte analysiere den letzten Fehler und schlage einen Fix vor.\n',
     });
+  });
+
+  it('handleTerminalEvent legt wartende Reply-Card an', () => {
+    const store = useAssistantStore.getState();
+
+    useTerminalStore.getState().addTerminal({
+      terminalId: 't-wait',
+      label: { prefix: 'T', index: 9 },
+      workspaceId: 'ws1',
+      status: 'active',
+      createdAt: Date.now(),
+    });
+
+    store.handleTerminalEvent({
+      terminalId: 't-wait',
+      timestamp: 123,
+      type: 'waiting',
+      summary: 'Waiting for input',
+      details: 'Apply migration now?\n⏳ waiting for input',
+      source: 'pattern',
+    });
+
+    expect(useAssistantStore.getState().pendingTerminalReplies).toEqual([
+      expect.objectContaining({
+        terminalId: 't-wait',
+        terminalLabel: 'T9',
+        question: 'Apply migration now?',
+      }),
+    ]);
+  });
+
+  it('sendTerminalReply nutzt dedizierten IPC-Kanal und entfernt die Reply-Card', async () => {
+    const store = useAssistantStore.getState();
+    useAssistantStore.setState({
+      pendingTerminalReplies: [
+        {
+          terminalId: 't-reply',
+          terminalLabel: 'T4',
+          question: 'Ship it?',
+          detectedAt: 1,
+        },
+      ],
+    });
+
+    await store.sendTerminalReply('t-reply', 'yes');
+
+    expect(transport.invoke).toHaveBeenCalledWith('sendTerminalInput', {
+      terminalId: 't-reply',
+      input: 'yes',
+    });
+    expect(useAssistantStore.getState().pendingTerminalReplies).toHaveLength(0);
+    const latestMessage = useAssistantStore.getState().messages.slice(-1)[0];
+    expect(latestMessage?.content).toContain('Antwort an T4 gesendet');
+  });
+
+  it('handleNotificationReplyRequest fokussiert den Reply-Flow', () => {
+    const store = useAssistantStore.getState();
+
+    store.handleNotificationReplyRequest({
+      notificationId: 'n-1',
+      terminalId: 't-1',
+    });
+
+    const state = useAssistantStore.getState();
+    expect(state.isExpanded).toBe(true);
+    expect(state.pendingReplyRequest?.terminalId).toBe('t-1');
   });
 
   it('sendMessage ruft assistant:send via Transport auf', () => {

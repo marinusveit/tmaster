@@ -28,6 +28,11 @@ export interface WriteTerminalRequest {
   data: string;
 }
 
+export interface SendTerminalInputRequest {
+  terminalId: TerminalId;
+  input: string;
+}
+
 export interface ResizeTerminalRequest {
   terminalId: TerminalId;
   cols: number;

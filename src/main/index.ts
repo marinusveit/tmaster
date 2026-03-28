@@ -228,6 +228,9 @@ const bootstrap = async (): Promise<void> => {
       };
     },
     (event) => recommendationEngine?.buildWaitingResponseHint(event) ?? null,
+    (request) => {
+      broadcast(IPC_CHANNELS.notificationReplyRequest, request);
+    },
   );
   const outputRingBuffer = new OutputRingBuffer();
   const lastEventTypeByTerminal = new Map<string, EventType>();

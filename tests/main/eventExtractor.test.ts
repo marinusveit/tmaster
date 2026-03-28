@@ -68,11 +68,11 @@ describe('EventExtractor', () => {
 
   it('erkennt Waiting-Muster', () => {
     const extractor = new EventExtractor();
-    const events = extractor.extract('t1', '⏳ waiting for input');
+    const events = extractor.extract('t1', 'Proceed with deploy? ⏳ waiting for input');
 
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe('waiting');
-    expect(events[0]?.summary).toBe('Waiting for input');
+    expect(events[0]?.summary).toBe('Proceed with deploy?');
   });
 
   it('zieht bei Waiting die eigentliche Rueckfrage in die Summary', () => {

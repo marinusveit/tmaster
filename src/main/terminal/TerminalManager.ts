@@ -156,6 +156,12 @@ export class TerminalManager {
     session.pty.write(data);
   }
 
+  public sendInput(terminalId: TerminalId, input: string): void {
+    const normalizedInput = input.replace(/\r\n/g, '\n');
+    const submittedInput = normalizedInput.endsWith('\n') ? normalizedInput : `${normalizedInput}\n`;
+    this.writeTerminal(terminalId, submittedInput);
+  }
+
   public resizeTerminal(terminalId: TerminalId, cols: number, rows: number): void {
     const session = this.sessions.get(terminalId);
     if (!session) {
