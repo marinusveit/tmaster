@@ -14,6 +14,7 @@ export interface CachedTerminal {
   terminal: Terminal;
   fitAddon: FitAddon;
   webglAddon: WebglAddon | null;
+  isWebglSupported: boolean;
   cleanups: (() => void)[];
   isOpened: boolean;
 }
@@ -75,6 +76,7 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
     terminal,
     fitAddon,
     webglAddon: null,
+    isWebglSupported: true,
     cleanups,
     isOpened: false,
   };
@@ -87,7 +89,7 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
  * Faellt bei Fehlern automatisch auf Canvas zurueck.
  */
 export const enableTerminalWebgl = (entry: CachedTerminal): void => {
-  if (entry.webglAddon) {
+  if (entry.webglAddon || !entry.isWebglSupported) {
     return;
   }
 
@@ -98,11 +100,13 @@ export const enableTerminalWebgl = (entry: CachedTerminal): void => {
       if (entry.webglAddon === webglAddon) {
         entry.webglAddon = null;
       }
+      entry.isWebglSupported = false;
     });
     entry.terminal.loadAddon(webglAddon);
     entry.webglAddon = webglAddon;
   } catch (error: unknown) {
     // WebGL ist optional: Terminal bleibt mit Canvas-Renderer funktionsfaehig.
+    entry.isWebglSupported = false;
     logRendererWarning('WebGL-Addon konnte nicht aktiviert werden, Fallback auf Canvas.', error);
   }
 };

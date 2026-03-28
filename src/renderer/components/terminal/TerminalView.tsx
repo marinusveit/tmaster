@@ -22,7 +22,6 @@ export const TerminalView = ({ terminalId }: TerminalViewProps): JSX.Element => 
 
     const cachedTerminal = getOrCreateTerminal(terminalId);
     const { terminal, fitAddon, isOpened } = cachedTerminal;
-    enableTerminalWebgl(cachedTerminal);
 
     if (!isOpened) {
       // Erster Mount: Terminal im DOM öffnen
@@ -34,6 +33,7 @@ export const TerminalView = ({ terminalId }: TerminalViewProps): JSX.Element => 
       container.appendChild(terminal.element);
     }
 
+    enableTerminalWebgl(cachedTerminal);
     fitAddon.fit();
 
     // Initiale Größe an PTY melden

@@ -19,7 +19,7 @@
     "start": "electron .",
     "lint": "eslint \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\"",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json --noEmit && tsc -p tsconfig.mcp.json --noEmit",
-    "pretest": "pnpm rebuild better-sqlite3",
+    "pretest": "npm_config_runtime=node pnpm rebuild better-sqlite3",
     "test": "vitest run",
     "posttest": "electron-rebuild -f -w node-pty,better-sqlite3"
   },

@@ -7,6 +7,7 @@ import { useKeyboardShortcuts } from '@renderer/hooks/useKeyboardShortcuts';
 import { TerminalView } from '@renderer/components/terminal/TerminalView';
 import { TerminalTabs } from '@renderer/components/terminal/TerminalTabs';
 import { SplitResizer } from '@renderer/components/terminal/SplitResizer';
+import { getVisibleTerminals } from '@renderer/components/terminal/visibleTerminals';
 import { Sidebar } from '@renderer/components/sidebar/Sidebar';
 import { AssistantPanel } from '@renderer/components/sidebar/AssistantPanel';
 import { WorkspaceTabs } from '@renderer/components/workspace/WorkspaceTabs';
@@ -80,17 +81,8 @@ export const App = (): JSX.Element => {
   useAssistant();
 
   const visibleTerminals: TerminalSessionInfo[] = useMemo(() => {
-    const slotCounts: Record<SplitMode, number> = {
-      single: 1,
-      horizontal: 2,
-      vertical: 2,
-      grid: 4,
-    };
-    const slots = slotCounts[splitMode];
-
-    // Terminals in natürlicher Reihenfolge belassen — kein Umsortieren
-    return workspaceTerminals.slice(0, slots);
-  }, [splitMode, workspaceTerminals]);
+    return getVisibleTerminals(workspaceTerminals, activeTerminalId, splitMode);
+  }, [activeTerminalId, splitMode, workspaceTerminals]);
 
   const shouldShowResizer = (splitMode === 'horizontal' || splitMode === 'vertical') && visibleTerminals.length > 1;
   const resizerDirection = splitMode === 'horizontal' ? 'horizontal' : 'vertical';
