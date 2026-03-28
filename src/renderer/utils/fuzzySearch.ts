@@ -4,7 +4,7 @@ export interface FuzzySearchResult<T> {
   highlights: number[];
 }
 
-interface MatchResult {
+export interface FuzzyMatchResult {
   score: number;
   highlights: number[];
 }
@@ -52,7 +52,7 @@ const isWordStart = (target: string, index: number): boolean => {
   return previous !== undefined && WORD_BOUNDARY_CHARS.has(previous);
 };
 
-const scoreMatch = (target: string, query: string): MatchResult | null => {
+export const scoreFuzzyMatch = (target: string, query: string): FuzzyMatchResult | null => {
   const targetNormalized = target.trim();
   const queryNormalized = query.trim();
 
@@ -129,7 +129,7 @@ export const fuzzySearch = <T>(
   const results: FuzzySearchResult<T>[] = [];
   for (const item of items) {
     const text = getText(item);
-    const match = scoreMatch(text, normalizedQuery);
+    const match = scoreFuzzyMatch(text, normalizedQuery);
     if (!match) {
       continue;
     }

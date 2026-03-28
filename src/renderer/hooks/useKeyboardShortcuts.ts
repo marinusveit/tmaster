@@ -3,6 +3,7 @@ import type { TerminalSessionInfo } from '@shared/types/terminal';
 import type { Workspace } from '@shared/types/workspace';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
 import { useQuickSwitcherStore } from '@renderer/stores/quickSwitcherStore';
+import { isQuickSwitcherShortcut } from '@renderer/utils/quickSwitcher';
 
 interface KeyboardShortcutHandlers {
   onCreateTerminal: () => void;
@@ -27,8 +28,8 @@ export const useKeyboardShortcuts = ({
 }: KeyboardShortcutHandlers): void => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+K → Quick-Switcher öffnen
-      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+      // Mod+K → Quick-Switcher öffnen (Cmd auf macOS, Ctrl als Fallback).
+      if (isQuickSwitcherShortcut(e)) {
         e.preventDefault();
         useQuickSwitcherStore.getState().open();
         return;

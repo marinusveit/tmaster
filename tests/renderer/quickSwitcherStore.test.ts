@@ -42,6 +42,14 @@ describe('quickSwitcherStore', () => {
     expect(next.selectedIndex).toBe(0);
   });
 
+  it('setSelectedIndex() setzt die aktive Auswahl direkt', () => {
+    const store = useQuickSwitcherStore.getState();
+
+    store.setSelectedIndex(3);
+
+    expect(useQuickSwitcherStore.getState().selectedIndex).toBe(3);
+  });
+
   it('moveDown() incrementiert selectedIndex', () => {
     const store = useQuickSwitcherStore.getState();
 

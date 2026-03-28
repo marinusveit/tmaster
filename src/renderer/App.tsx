@@ -12,10 +12,12 @@ import { AssistantPanel } from '@renderer/components/sidebar/AssistantPanel';
 import { WorkspaceTabs } from '@renderer/components/workspace/WorkspaceTabs';
 import { StatusBar } from '@renderer/components/statusbar/StatusBar';
 import { QuickSwitcher } from '@renderer/components/common/QuickSwitcher';
+import { getOrCreateTerminal } from '@renderer/components/terminal/terminalInstances';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
 import { useAssistant } from '@renderer/hooks/useAssistant';
 import type { SplitMode } from '@renderer/stores/terminalStore';
+import type { QuickSwitcherItem } from '@renderer/utils/quickSwitcher';
 
 export const App = (): JSX.Element => {
   const {
@@ -143,6 +145,21 @@ export const App = (): JSX.Element => {
     });
   }, [reportAsyncError]);
 
+  const focusWorkspaceTab = useCallback(() => {
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>('.workspace-tab[aria-selected="true"]')?.focus();
+    });
+  }, []);
+
+  const focusTerminal = useCallback((terminalId: string) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const terminalEntry = getOrCreateTerminal(terminalId);
+        terminalEntry.terminal.focus();
+      });
+    });
+  }, []);
+
   // Terminals laden wenn Workspace verfügbar
   useEffect(() => {
     if (activeWorkspaceId) {
@@ -227,22 +244,27 @@ export const App = (): JSX.Element => {
     }
   }, [orderedWorkspaces, activeWorkspaceId, switchWorkspace, runAsync]);
 
-  const handleQuickSwitcherSelect = useCallback((terminalId: string) => {
-    const selectedTerminal = allTerminals.find((terminal) => terminal.terminalId === terminalId);
-    if (!selectedTerminal) {
-      return;
-    }
-
-    if (selectedTerminal.workspaceId !== activeWorkspaceId) {
-      runAsync('Terminal über Workspace-Wechsel aktivieren', async () => {
-        await switchWorkspace(selectedTerminal.workspaceId);
-        switchTerminal(terminalId);
+  const handleQuickSwitcherSelect = useCallback((item: QuickSwitcherItem) => {
+    if (item.kind === 'workspace') {
+      runAsync('Workspace über Quick-Switcher aktivieren', async () => {
+        await switchWorkspace(item.workspaceId);
+        focusWorkspaceTab();
       });
       return;
     }
 
-    switchTerminal(terminalId);
-  }, [allTerminals, activeWorkspaceId, switchWorkspace, switchTerminal, runAsync]);
+    if (item.workspaceId !== activeWorkspaceId) {
+      runAsync('Terminal über Workspace-Wechsel aktivieren', async () => {
+        await switchWorkspace(item.workspaceId);
+        switchTerminal(item.terminal.terminalId);
+        focusTerminal(item.terminal.terminalId);
+      });
+      return;
+    }
+
+    switchTerminal(item.terminal.terminalId);
+    focusTerminal(item.terminal.terminalId);
+  }, [activeWorkspaceId, focusTerminal, focusWorkspaceTab, switchWorkspace, switchTerminal, runAsync]);
 
   useKeyboardShortcuts({
     onCreateTerminal: handleCreateTerminal,
@@ -322,7 +344,8 @@ export const App = (): JSX.Element => {
         terminals={allTerminals}
         workspaces={orderedWorkspaces}
         activeTerminalId={activeTerminalId}
-        onSelectTerminal={handleQuickSwitcherSelect}
+        activeWorkspaceId={activeWorkspaceId}
+        onSelectItem={handleQuickSwitcherSelect}
       />
     </div>
   );

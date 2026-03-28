@@ -9,33 +9,26 @@ import {
 } from 'react';
 import type { ListSessionsResponse } from '@shared/types/session';
 import type { TerminalId, TerminalSessionInfo, TerminalStatus } from '@shared/types/terminal';
-import type { Workspace } from '@shared/types/workspace';
+import type { Workspace, WorkspaceId } from '@shared/types/workspace';
 import { transport } from '@renderer/transport';
 import { useQuickSwitcherStore } from '@renderer/stores/quickSwitcherStore';
-import { fuzzySearch } from '@renderer/utils/fuzzySearch';
+import {
+  buildQuickSwitcherItems,
+  clampQuickSwitcherSelection,
+  getNextQuickSwitcherIndex,
+  getSelectedQuickSwitcherItem,
+  rankQuickSwitcherItems,
+  type QuickSwitcherItem,
+} from '@renderer/utils/quickSwitcher';
 import { detectAgentType } from '../../../common/agent/detectAgentType';
 
 interface QuickSwitcherProps {
   terminals: TerminalSessionInfo[];
   workspaces: Workspace[];
   activeTerminalId: TerminalId | null;
-  onSelectTerminal: (terminalId: TerminalId) => void;
+  activeWorkspaceId: WorkspaceId | null;
+  onSelectItem: (item: QuickSwitcherItem) => void;
 }
-
-interface QuickSwitcherItem {
-  terminal: TerminalSessionInfo;
-  terminalLabel: string;
-  agentType: string;
-  statusLabel: string;
-  workspaceName: string;
-  searchableText: string;
-}
-
-const STATUS_LABELS: Record<TerminalStatus, string> = {
-  active: 'Aktiv',
-  idle: 'Inaktiv',
-  exited: 'Beendet',
-};
 
 const STATUS_DOT_CLASSES: Record<TerminalStatus, string> = {
   active: 'status-dot--active',
@@ -43,34 +36,15 @@ const STATUS_DOT_CLASSES: Record<TerminalStatus, string> = {
   exited: 'status-dot--exited',
 };
 
-const inferAgentTypeFromPrefix = (prefix: string): string => {
-  const normalizedPrefix = prefix.trim().toLowerCase();
-  if (normalizedPrefix.length === 0 || normalizedPrefix === 't' || normalizedPrefix === 'terminal') {
-    return 'unknown';
-  }
-
-  return normalizedPrefix;
-};
-
-const getLabelHighlights = (label: string, query: string): Set<number> => {
-  if (query.trim().length === 0) {
-    return new Set();
-  }
-
-  const matches = fuzzySearch([label], query, (item) => item);
-  const highlights = matches[0]?.highlights ?? [];
-  return new Set(highlights);
-};
-
-const highlightLabel = (label: string, query: string): JSX.Element[] => {
-  const highlights = getLabelHighlights(label, query);
+const highlightLabel = (label: string, highlights: number[]): JSX.Element[] => {
+  const highlightSet = new Set(highlights);
 
   return label.split('').map((char, index) => {
-    const shouldHighlight = highlights.has(index);
+    const isHighlighted = highlightSet.has(index);
     return (
       <span
         key={`${char}-${index}`}
-        className={shouldHighlight ? 'quick-switcher__label-char quick-switcher__label-char--highlight' : 'quick-switcher__label-char'}
+        className={isHighlighted ? 'quick-switcher__label-char quick-switcher__label-char--highlight' : 'quick-switcher__label-char'}
       >
         {char}
       </span>
@@ -82,19 +56,23 @@ export const QuickSwitcher = ({
   terminals,
   workspaces,
   activeTerminalId,
-  onSelectTerminal,
+  activeWorkspaceId,
+  onSelectItem,
 }: QuickSwitcherProps): JSX.Element | null => {
   const isOpen = useQuickSwitcherStore((state) => state.isOpen);
   const query = useQuickSwitcherStore((state) => state.query);
   const selectedIndex = useQuickSwitcherStore((state) => state.selectedIndex);
   const close = useQuickSwitcherStore((state) => state.close);
   const setQuery = useQuickSwitcherStore((state) => state.setQuery);
+  const setSelectedIndex = useQuickSwitcherStore((state) => state.setSelectedIndex);
   const moveUp = useQuickSwitcherStore((state) => state.moveUp);
   const moveDown = useQuickSwitcherStore((state) => state.moveDown);
-  const resetSelection = useQuickSwitcherStore((state) => state.resetSelection);
 
   const [agentTypeByTerminalId, setAgentTypeByTerminalId] = useState<Record<TerminalId, string>>({});
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const previousFocusedElementRef = useRef<HTMLElement | null>(null);
+  const previousOpenStateRef = useRef(false);
+  const shouldRestoreFocusRef = useRef(true);
 
   useEffect(() => {
     if (!isOpen) {
@@ -109,8 +87,7 @@ export const QuickSwitcher = ({
         const nextByTerminalId: Record<TerminalId, string> = {};
 
         for (const session of response.sessions) {
-          const agentType = detectAgentType(session.shell);
-          nextByTerminalId[session.terminalId] = agentType;
+          nextByTerminalId[session.terminalId] = detectAgentType(session.shell);
         }
 
         if (!isCancelled) {
@@ -131,128 +108,104 @@ export const QuickSwitcher = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) {
-      return;
+    if (isOpen && !previousOpenStateRef.current) {
+      previousFocusedElementRef.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+      shouldRestoreFocusRef.current = true;
+      inputRef.current?.focus();
     }
 
-    inputRef.current?.focus();
+    if (!isOpen && previousOpenStateRef.current) {
+      if (shouldRestoreFocusRef.current) {
+        previousFocusedElementRef.current?.focus();
+      }
+
+      previousFocusedElementRef.current = null;
+      shouldRestoreFocusRef.current = true;
+    }
+
+    previousOpenStateRef.current = isOpen;
   }, [isOpen]);
 
-  const workspaceNameById = useMemo(() => {
-    const nameMap = new Map<string, string>();
-    for (const workspace of workspaces) {
-      nameMap.set(workspace.id, workspace.name);
-    }
-    return nameMap;
-  }, [workspaces]);
-
-  const quickSwitcherItems = useMemo<QuickSwitcherItem[]>(() => {
-    return terminals.map((terminal) => {
-      const terminalLabel = `${terminal.label.prefix}${terminal.label.index}`;
-      const agentType = agentTypeByTerminalId[terminal.terminalId] ?? inferAgentTypeFromPrefix(terminal.label.prefix);
-      const statusLabel = STATUS_LABELS[terminal.status] ?? terminal.status;
-      const workspaceName = workspaceNameById.get(terminal.workspaceId) ?? 'Unknown Workspace';
-
-      return {
-        terminal,
-        terminalLabel,
-        agentType,
-        statusLabel,
-        workspaceName,
-        searchableText: `${terminalLabel} ${agentType} ${statusLabel} ${terminal.status} ${workspaceName}`,
-      };
+  const quickSwitcherItems = useMemo(() => {
+    return buildQuickSwitcherItems({
+      terminals,
+      workspaces,
+      agentTypeByTerminalId,
     });
-  }, [terminals, workspaceNameById, agentTypeByTerminalId]);
+  }, [terminals, workspaces, agentTypeByTerminalId]);
 
   const rankedResults = useMemo(() => {
-    const matches = fuzzySearch(quickSwitcherItems, query, (item) => item.searchableText);
-
-    // Aktives Terminal bei gleichem Score bevorzugen.
-    return matches.sort((left, right) => {
-      if (left.score !== right.score) {
-        return right.score - left.score;
-      }
-
-      const leftActive = left.item.terminal.terminalId === activeTerminalId;
-      const rightActive = right.item.terminal.terminalId === activeTerminalId;
-      if (leftActive === rightActive) {
-        return left.item.terminal.label.index - right.item.terminal.label.index;
-      }
-
-      return rightActive ? 1 : -1;
+    return rankQuickSwitcherItems(quickSwitcherItems, query, {
+      activeTerminalId,
+      activeWorkspaceId,
     });
-  }, [quickSwitcherItems, query, activeTerminalId]);
+  }, [quickSwitcherItems, query, activeTerminalId, activeWorkspaceId]);
 
   useEffect(() => {
     if (!isOpen) {
       return;
     }
 
-    if (rankedResults.length === 0) {
-      if (selectedIndex !== 0) {
-        resetSelection();
-      }
-      return;
+    const clampedIndex = clampQuickSwitcherSelection(selectedIndex, rankedResults.length);
+    if (clampedIndex !== selectedIndex) {
+      setSelectedIndex(clampedIndex);
     }
+  }, [isOpen, rankedResults.length, selectedIndex, setSelectedIndex]);
 
-    const maxIndex = rankedResults.length - 1;
-    if (selectedIndex > maxIndex) {
-      resetSelection();
-    }
-  }, [isOpen, rankedResults.length, selectedIndex, resetSelection]);
-
-  const selectedResultIndex = rankedResults.length === 0
-    ? 0
-    : Math.min(selectedIndex, rankedResults.length - 1);
-
-  const chooseTerminal = useCallback((terminalId: TerminalId) => {
-    onSelectTerminal(terminalId);
+  const closeAndRestoreFocus = useCallback(() => {
+    shouldRestoreFocusRef.current = true;
     close();
-  }, [onSelectTerminal, close]);
+  }, [close]);
+
+  const chooseItem = useCallback((item: QuickSwitcherItem) => {
+    shouldRestoreFocusRef.current = false;
+    close();
+    onSelectItem(item);
+  }, [close, onSelectItem]);
 
   const onInputKeyDown = useCallback((event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      if (rankedResults.length === 0 || selectedIndex >= rankedResults.length - 1) {
-        return;
+      const nextIndex = getNextQuickSwitcherIndex(selectedIndex, rankedResults.length, 'down');
+      if (nextIndex !== selectedIndex) {
+        moveDown();
       }
-
-      moveDown();
       return;
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      if (selectedIndex <= 0) {
-        return;
+      const nextIndex = getNextQuickSwitcherIndex(selectedIndex, rankedResults.length, 'up');
+      if (nextIndex !== selectedIndex) {
+        moveUp();
       }
-
-      moveUp();
       return;
     }
 
     if (event.key === 'Enter') {
       event.preventDefault();
-      const selected = rankedResults[selectedResultIndex];
-      if (selected) {
-        chooseTerminal(selected.item.terminal.terminalId);
+      const selectedItem = getSelectedQuickSwitcherItem(rankedResults, selectedIndex);
+      if (selectedItem) {
+        chooseItem(selectedItem.item);
       }
       return;
     }
 
     if (event.key === 'Escape') {
       event.preventDefault();
-      close();
+      closeAndRestoreFocus();
     }
-  }, [moveDown, moveUp, rankedResults, selectedIndex, selectedResultIndex, chooseTerminal, close]);
+  }, [closeAndRestoreFocus, chooseItem, moveDown, moveUp, rankedResults, selectedIndex]);
 
   const onBackdropClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) {
       return;
     }
 
-    close();
-  }, [close]);
+    closeAndRestoreFocus();
+  }, [closeAndRestoreFocus]);
 
   if (!isOpen) {
     return null;
@@ -267,35 +220,38 @@ export const QuickSwitcher = ({
             className="quick-switcher__input"
             type="text"
             value={query}
-            placeholder="Terminal suchen (Label, Agent, Status, Workspace)"
+            placeholder="Terminale oder Workspaces suchen"
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onInputKeyDown}
-            aria-label="Terminal suchen"
+            aria-label="Terminale oder Workspaces suchen"
           />
         </div>
-        <div className="quick-switcher__results" role="listbox" aria-label="Terminal Suchergebnisse">
+        <div className="quick-switcher__results" role="listbox" aria-label="Quick-Switcher Suchergebnisse">
           {rankedResults.length === 0 && (
-            <div className="quick-switcher__empty">Kein Terminal gefunden</div>
+            <div className="quick-switcher__empty">Kein passendes Terminal oder Workspace gefunden</div>
           )}
           {rankedResults.map((result, index) => {
-            const { terminal, terminalLabel, agentType, statusLabel, workspaceName } = result.item;
-            const isSelected = index === selectedResultIndex;
-            const dotClassName = STATUS_DOT_CLASSES[terminal.status] ?? 'status-dot--idle';
+            const isSelected = index === clampQuickSwitcherSelection(selectedIndex, rankedResults.length);
+            const dotClassName = STATUS_DOT_CLASSES[result.item.statusTone] ?? 'status-dot--idle';
+            const itemTypeLabel = result.item.kind === 'terminal' ? 'Terminal' : 'Workspace';
 
             return (
               <button
-                key={terminal.terminalId}
+                key={result.item.id}
                 className={`quick-switcher__item${isSelected ? ' quick-switcher__item--selected' : ''}`}
                 type="button"
                 role="option"
                 aria-selected={isSelected}
-                onClick={() => chooseTerminal(terminal.terminalId)}
+                onMouseEnter={() => setSelectedIndex(index)}
+                onClick={() => chooseItem(result.item)}
               >
                 <span className={`status-dot ${dotClassName}`} aria-hidden="true" />
-                <span className="quick-switcher__item-label">{highlightLabel(terminalLabel, query)}</span>
-                <span className="quick-switcher__item-agent">{agentType}</span>
-                <span className="quick-switcher__item-status">{statusLabel}</span>
-                <span className="quick-switcher__item-workspace">{workspaceName}</span>
+                <span className="quick-switcher__item-main">
+                  <span className="quick-switcher__item-label">{highlightLabel(result.item.title, result.highlights)}</span>
+                  <span className="quick-switcher__item-subtitle">{result.item.subtitle}</span>
+                </span>
+                <span className="quick-switcher__item-kind">{itemTypeLabel}</span>
+                <span className="quick-switcher__item-status">{result.item.statusLabel}</span>
               </button>
             );
           })}

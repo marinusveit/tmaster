@@ -10,6 +10,7 @@ interface QuickSwitcherActions {
   open: () => void;
   close: () => void;
   setQuery: (query: string) => void;
+  setSelectedIndex: (selectedIndex: number) => void;
   moveUp: () => void;
   moveDown: () => void;
   resetSelection: () => void;
@@ -36,6 +37,10 @@ export const useQuickSwitcherStore = create<QuickSwitcherStore>((set) => ({
 
   setQuery: (query) => {
     set({ query, selectedIndex: 0 });
+  },
+
+  setSelectedIndex: (selectedIndex) => {
+    set({ selectedIndex });
   },
 
   moveUp: () => {
