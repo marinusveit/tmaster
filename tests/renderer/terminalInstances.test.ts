@@ -142,7 +142,7 @@ vi.mock('@xterm/addon-fit', () => ({
   FitAddon: mocks.MockFitAddon,
 }));
 
-vi.mock('xterm-addon-search', () => ({
+vi.mock('@renderer/components/terminal/xtermAddonSearchVendor', () => ({
   SearchAddon: mocks.MockSearchAddon,
 }));
 

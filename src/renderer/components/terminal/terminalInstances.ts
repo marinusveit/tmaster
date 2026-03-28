@@ -1,5 +1,9 @@
 import { Terminal, type ITheme } from 'xterm';
-import { SearchAddon, type ISearchOptions } from 'xterm-addon-search';
+import {
+  SearchAddon,
+  type SearchAddonInstance,
+  type SearchOptions,
+} from '@renderer/components/terminal/xtermAddonSearchVendor';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import type {
@@ -20,7 +24,7 @@ import { logRendererWarning } from '@renderer/utils/logger';
 export interface CachedTerminal {
   terminal: Terminal;
   fitAddon: FitAddon;
-  searchAddon: SearchAddon;
+  searchAddon: SearchAddonInstance;
   webglAddon: WebglAddon | null;
   isWebglSupported: boolean;
   cleanups: (() => void)[];
@@ -28,7 +32,7 @@ export interface CachedTerminal {
 }
 
 const cache = new Map<TerminalId, CachedTerminal>();
-const SEARCH_DECORATIONS: NonNullable<ISearchOptions['decorations']> = {
+const SEARCH_DECORATIONS: NonNullable<SearchOptions['decorations']> = {
   matchBackground: '#3f291d',
   matchBorder: '#c16a44',
   matchOverviewRuler: '#a45433',
@@ -48,7 +52,7 @@ interface SearchResultChangeEvent {
   resultCount: number;
 }
 
-const buildSearchOptions = (options: TerminalSearchOptions): ISearchOptions => ({
+const buildSearchOptions = (options: TerminalSearchOptions): SearchOptions => ({
   caseSensitive: options.caseSensitive,
   regex: options.regex,
   incremental: options.incremental,
