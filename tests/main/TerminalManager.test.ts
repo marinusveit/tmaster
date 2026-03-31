@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IPty } from 'node-pty';
 import { spawn } from 'node-pty';
 import { TerminalManager } from '@main/terminal/TerminalManager';
+import { DEFAULT_TERMINAL_SCROLLBACK } from '@shared/types/terminal';
 
 interface FakePty extends IPty {
   emitData: (data: string) => void;
@@ -104,6 +105,68 @@ describe('TerminalManager', () => {
     vi.advanceTimersByTime(16);
 
     expect(onData).toHaveBeenCalledWith({ terminalId, data: 'abc123' });
+
+    manager.destroyAll();
+  });
+
+  it('verwendet standardmäßig scrollback 5000 und erlaubt pro Terminal Overrides', () => {
+    const manager = new TerminalManager({
+      onData: vi.fn(),
+      onExit: vi.fn(),
+    });
+
+    const defaultTerminal = manager.createTerminal({});
+    const customTerminal = manager.createTerminal({ scrollback: 1200 });
+
+    expect(defaultTerminal.scrollback).toBe(DEFAULT_TERMINAL_SCROLLBACK);
+    expect(customTerminal.scrollback).toBe(1200);
+    expect(manager.listTerminals().map((terminal) => terminal.scrollback)).toEqual([5000, 1200]);
+
+    manager.destroyAll();
+  });
+
+  it('schaltet bei hohem Output in den Throttle-Modus und erholt sich danach wieder', () => {
+    const onData = vi.fn();
+    const onProtectionChange = vi.fn();
+    const manager = new TerminalManager({
+      onData,
+      onExit: vi.fn(),
+      onProtectionChange,
+    });
+
+    const { terminalId } = manager.createTerminal({});
+    const burstChunk = 'x'.repeat(400_000);
+
+    fakePtys[0]?.emitData(burstChunk);
+    fakePtys[0]?.emitData(burstChunk);
+    fakePtys[0]?.emitData(burstChunk);
+
+    expect(onProtectionChange).toHaveBeenCalledWith(expect.objectContaining({
+      terminalId,
+      protection: expect.objectContaining({
+        mode: 'throttled',
+        reason: 'output-rate',
+      }),
+    }));
+
+    vi.advanceTimersByTime(16);
+    expect(onData).toHaveBeenCalledTimes(1);
+
+    fakePtys[0]?.emitData('tail');
+    vi.advanceTimersByTime(16);
+    expect(onData).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(48);
+    expect(onData).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(1200);
+    expect(onProtectionChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      terminalId,
+      protection: expect.objectContaining({
+        mode: 'normal',
+        reason: 'none',
+      }),
+    }));
 
     manager.destroyAll();
   });

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   const searchState = {
     terminalId: null as string | null,
   };
+  const terminals = new Map<string, { scrollback: number }>();
   const state = {
     shouldThrowOnWebglCreation: false,
   };
@@ -125,6 +126,7 @@ const mocks = vi.hoisted(() => {
     mockSearchAddons,
     mockWebglAddons,
     searchState,
+    terminals,
     setSearchResults,
     state,
     transportInvoke,
@@ -154,6 +156,7 @@ vi.mock('@renderer/stores/terminalStore', () => ({
   useTerminalStore: {
     getState: () => ({
       search: mocks.searchState,
+      terminals: mocks.terminals,
       setSearchResults: mocks.setSearchResults,
     }),
   },
@@ -217,6 +220,7 @@ describe('terminalInstances', () => {
     mocks.mockSearchAddons.length = 0;
     mocks.mockWebglAddons.length = 0;
     mocks.searchState.terminalId = null;
+    mocks.terminals.clear();
     mocks.setSearchResults.mockReset();
     mocks.state.shouldThrowOnWebglCreation = false;
     mocks.logRendererWarning.mockReset();
@@ -231,6 +235,15 @@ describe('terminalInstances', () => {
     expect(terminal.options.scrollback).toBe(5000);
     expect(terminal.options.fontSize).toBe(14);
     expect(terminal.options.fontFamily).toBe('JetBrains Mono');
+  });
+
+  it('übernimmt den konfigurierten Scrollback pro Terminal', () => {
+    mocks.terminals.set('t3', { scrollback: 1200 });
+
+    const entry = getOrCreateTerminal('t3');
+    const terminal = entry.terminal as unknown as MockTerminal;
+
+    expect(terminal.options.scrollback).toBe(1200);
   });
 
   it('liest den kompletten Buffer als ANSI-freien Text aus', () => {

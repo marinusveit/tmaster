@@ -6,12 +6,8 @@ import {
 } from '@renderer/components/terminal/xtermAddonSearchVendor';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
-import type {
-  TerminalId,
-  TerminalDataEvent,
-  TerminalExitEvent,
-  TerminalExportScope,
-} from '@shared/types/terminal';
+import { DEFAULT_TERMINAL_SCROLLBACK as DEFAULT_SCROLLBACK } from '@shared/types/terminal';
+import type { TerminalId, TerminalDataEvent, TerminalExitEvent, TerminalExportScope } from '@shared/types/terminal';
 import { transport } from '@renderer/transport';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { logRendererWarning } from '@renderer/utils/logger';
@@ -22,6 +18,7 @@ import { logRendererWarning } from '@renderer/utils/logger';
  * den Buffer nicht zerstören.
  */
 export interface CachedTerminal {
+  terminalId: TerminalId;
   terminal: Terminal;
   fitAddon: FitAddon;
   searchAddon: SearchAddonInstance;
@@ -88,9 +85,11 @@ const readTerminalTheme = (): ITheme => {
 };
 
 const applyTerminalAppearance = (entry: CachedTerminal): void => {
+  const terminalState = useTerminalStore.getState().terminals.get(entry.terminalId);
   entry.terminal.options.fontFamily = readCssVariable('--terminal-font-family', 'JetBrains Mono');
   entry.terminal.options.fontSize = readTerminalFontSize();
   entry.terminal.options.theme = readTerminalTheme();
+  entry.terminal.options.scrollback = terminalState?.scrollback ?? DEFAULT_SCROLLBACK;
 
   if (entry.isOpened) {
     entry.fitAddon.fit();
@@ -109,7 +108,7 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
 
   const terminal = new Terminal({
     cursorBlink: true,
-    scrollback: 5000,
+    scrollback: useTerminalStore.getState().terminals.get(terminalId)?.scrollback ?? DEFAULT_SCROLLBACK,
     fontFamily: readCssVariable('--terminal-font-family', 'JetBrains Mono'),
     fontSize: readTerminalFontSize(),
     theme: readTerminalTheme(),
@@ -159,6 +158,7 @@ export const getOrCreateTerminal = (terminalId: TerminalId): CachedTerminal => {
   cleanups.push(() => searchResultsSub.dispose());
 
   const entry: CachedTerminal = {
+    terminalId,
     terminal,
     fitAddon,
     searchAddon,

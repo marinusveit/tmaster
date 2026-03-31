@@ -20,6 +20,10 @@ const asString = (value: unknown): string | null => {
   return typeof value === 'string' ? value : null;
 };
 
+const asPositiveInteger = (value: unknown): number | null => {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+};
+
 export const registerTerminalHandlers = (ipcMain: IpcMain, terminalManager: TerminalManager): void => {
   ipcMain.handle(IPC_CHANNELS.terminalCreate, (_event, payload: unknown) => {
     const request = parseCreateRequest(payload);
@@ -75,11 +79,17 @@ const parseCreateRequest = (payload: unknown): CreateTerminalRequest => {
   const shell = asString(payload.shell);
   const workspaceId = asString(payload.workspaceId);
   const label = asString(payload.label);
+  const scrollbackValue = payload.scrollback;
+  if (scrollbackValue !== undefined && asPositiveInteger(scrollbackValue) === null) {
+    throw new Error('Invalid create payload');
+  }
+
   return {
     cwd: cwd ?? undefined,
     shell: shell ?? undefined,
     workspaceId: workspaceId ?? undefined,
     label: label ?? undefined,
+    scrollback: asPositiveInteger(scrollbackValue) ?? undefined,
   };
 };
 

@@ -8,6 +8,7 @@ import {
   getOrCreateTerminal,
 } from '@renderer/components/terminal/terminalInstances';
 import { TerminalContextMenu } from '@renderer/components/terminal/TerminalContextMenu';
+import { useTerminalStore } from '@renderer/stores/terminalStore';
 
 interface TerminalViewProps {
   terminalId: TerminalId;
@@ -32,6 +33,7 @@ export const TerminalView = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const protectionWarning = useTerminalStore((state) => state.terminals.get(terminalId)?.protection.warning ?? null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -184,6 +186,11 @@ export const TerminalView = ({
 
   return (
     <div className="terminal-view" onContextMenu={handleContextMenu} ref={containerRef}>
+      {protectionWarning && (
+        <div className="terminal-protection-banner" role="status">
+          {protectionWarning}
+        </div>
+      )}
       {contextMenu ? (
         <TerminalContextMenu
           menuRef={menuRef}

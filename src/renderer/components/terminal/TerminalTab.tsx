@@ -1,9 +1,10 @@
 import type { DragEvent, KeyboardEvent, MouseEvent } from 'react';
-import type { TerminalLabel } from '@shared/types/terminal';
+import type { TerminalLabel, TerminalProtectionState } from '@shared/types/terminal';
 import type { DropPosition } from './terminalTabDrag';
 
 interface TerminalTabProps {
   label: TerminalLabel;
+  protection: TerminalProtectionState;
   isActive: boolean;
   isDragging: boolean;
   dropIndicator: DropPosition | null;
@@ -17,6 +18,7 @@ interface TerminalTabProps {
 
 export const TerminalTab = ({
   label,
+  protection,
   isActive,
   isDragging,
   dropIndicator,
@@ -33,6 +35,7 @@ export const TerminalTab = ({
   };
 
   const terminalName = `${label.prefix}${label.index}`;
+  const isProtected = protection.mode === 'throttled';
 
   return (
     <button
@@ -51,6 +54,7 @@ export const TerminalTab = ({
       <span className="terminal-tab__label">
         {label.prefix}{label.index}
       </span>
+      {isProtected && <span className="terminal-tab__badge">Hot</span>}
       <span
         className="terminal-tab__close"
         onClick={(event) => handleClose(event)}

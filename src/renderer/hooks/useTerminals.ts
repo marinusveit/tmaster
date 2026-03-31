@@ -9,6 +9,7 @@ import type {
   ReorderTerminalsRequest,
   TerminalDataEvent,
   TerminalExitEvent,
+  TerminalProtectionEvent,
   TerminalStatusEvent,
 } from '@shared/types/terminal';
 import type { TerminalEvent } from '@shared/types/event';
@@ -25,6 +26,7 @@ export const useTerminals = () => {
     reorderTerminals,
     setActiveTerminal,
     updateStatus,
+    updateProtection,
     setWaitingState,
     clearWaitingState,
     getOrderedTerminals,
@@ -43,6 +45,10 @@ export const useTerminals = () => {
 
     const unsubStatus = transport.on<TerminalStatusEvent>('onTerminalStatus', (event) => {
       updateStatus(event.terminalId, event.status);
+    });
+
+    const unsubProtection = transport.on<TerminalProtectionEvent>('onTerminalProtection', (event) => {
+      updateProtection(event.terminalId, event.protection);
     });
 
     const unsubEvent = transport.on<TerminalEvent>('onTerminalEvent', (event) => {
@@ -68,10 +74,11 @@ export const useTerminals = () => {
     return () => {
       unsubExit();
       unsubStatus();
+      unsubProtection();
       unsubEvent();
       unsubData();
     };
-  }, [clearWaitingState, removeTerminal, setWaitingState, updateStatus]);
+  }, [clearWaitingState, removeTerminal, setWaitingState, updateProtection, updateStatus]);
 
   const createTerminal = useCallback(async (request: CreateTerminalRequest = {}): Promise<CreateTerminalResponse> => {
     const response = await transport.invoke<CreateTerminalResponse>('createTerminal', request);
@@ -82,6 +89,8 @@ export const useTerminals = () => {
       displayOrder: response.displayOrder ?? response.label.index,
       status: 'active',
       createdAt: Date.now(),
+      scrollback: response.scrollback,
+      protection: response.protection,
     });
     setActiveTerminal(response.terminalId);
     await transport.invoke<UiState>('saveUiState', {

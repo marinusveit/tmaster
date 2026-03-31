@@ -33,6 +33,16 @@ const terminals: TerminalSessionInfo[] = [
     workspaceId: 'ws-core',
     status: 'active',
     createdAt: 10,
+    scrollback: 5000,
+    protection: {
+      mode: 'normal',
+      reason: 'none',
+      outputBytesPerSecond: 0,
+      bufferedBytes: 0,
+      thresholdBytesPerSecond: 1024 * 1024,
+      warning: null,
+      updatedAt: 0,
+    },
   },
   {
     terminalId: 'term-b',
@@ -40,6 +50,16 @@ const terminals: TerminalSessionInfo[] = [
     workspaceId: 'ws-ops',
     status: 'idle',
     createdAt: 11,
+    scrollback: 5000,
+    protection: {
+      mode: 'normal',
+      reason: 'none',
+      outputBytesPerSecond: 0,
+      bufferedBytes: 0,
+      thresholdBytesPerSecond: 1024 * 1024,
+      warning: null,
+      updatedAt: 0,
+    },
   },
 ];
 

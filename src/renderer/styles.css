@@ -897,6 +897,18 @@ html {
   color: var(--error-text);
 }
 
+.terminal-tab__badge {
+  padding: 2px 6px;
+  border: 1px solid rgba(242, 163, 60, 0.32);
+  border-radius: 999px;
+  background: rgba(242, 163, 60, 0.12);
+  color: var(--accent);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .terminal-tabs__add {
   background: transparent;
   border: none;
@@ -984,6 +996,23 @@ html {
   overflow: hidden;
   position: relative;
   background: var(--terminal-bg);
+}
+
+.terminal-protection-banner {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 2;
+  padding: 10px 12px;
+  border: 1px solid rgba(242, 163, 60, 0.28);
+  border-radius: var(--radius-md);
+  background: rgba(36, 18, 6, 0.9);
+  color: #ffd7a1;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  box-shadow: var(--shadow-drop-sm);
+  backdrop-filter: blur(10px);
 }
 
 .terminal-context-menu {

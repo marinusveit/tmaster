@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import type { TerminalId, TerminalSessionInfo, TerminalStatus } from '@shared/types/terminal';
+import {
+  DEFAULT_TERMINAL_SCROLLBACK,
+  TERMINAL_PROTECTION_THRESHOLD_BYTES_PER_SECOND,
+  type TerminalId,
+  type TerminalProtectionState,
+  type TerminalSessionInfo,
+  type TerminalStatus,
+} from '@shared/types/terminal';
 import type { WorkspaceId } from '@shared/types/workspace';
 import {
   DEFAULT_SPLIT_MODE,
@@ -32,12 +39,24 @@ const createDefaultSearchState = (): TerminalSearchState => ({
   resultCount: 0,
 });
 
+const createDefaultProtectionState = (): TerminalProtectionState => ({
+  mode: 'normal',
+  reason: 'none',
+  outputBytesPerSecond: 0,
+  bufferedBytes: 0,
+  thresholdBytesPerSecond: TERMINAL_PROTECTION_THRESHOLD_BYTES_PER_SECOND,
+  warning: null,
+  updatedAt: 0,
+});
+
 const mergeTerminalWithEphemeralState = (
   incoming: TerminalSessionInfo,
   existing?: TerminalSessionInfo,
 ): TerminalSessionInfo => {
   return {
     ...incoming,
+    scrollback: incoming.scrollback ?? existing?.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK,
+    protection: incoming.protection ?? existing?.protection ?? createDefaultProtectionState(),
     isWaiting: existing?.isWaiting ?? incoming.isWaiting,
     waitingContext: existing?.waitingContext ?? incoming.waitingContext,
     waitingSince: existing?.waitingSince ?? incoming.waitingSince,
@@ -64,6 +83,7 @@ interface TerminalStoreActions {
   reorderTerminals: (workspaceId: WorkspaceId, orderedTerminalIds: TerminalId[]) => void;
   setActiveTerminal: (terminalId: TerminalId | null) => void;
   updateStatus: (terminalId: TerminalId, status: TerminalStatus) => void;
+  updateProtection: (terminalId: TerminalId, protection: TerminalProtectionState) => void;
   setWaitingState: (terminalId: TerminalId, context: string, timestamp: number) => void;
   clearWaitingState: (terminalId: TerminalId) => void;
   getOrderedTerminals: () => TerminalSessionInfo[];
@@ -160,6 +180,22 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     });
   },
 
+  updateProtection: (terminalId, protection) => {
+    set((state) => {
+      const existing = state.terminals.get(terminalId);
+      if (!existing) {
+        return state;
+      }
+
+      const next = new Map(state.terminals);
+      next.set(terminalId, {
+        ...existing,
+        protection,
+      });
+      return { terminals: next };
+    });
+  },
+
   setWaitingState: (terminalId, context, timestamp) => {
     set((state) => {
       const existing = state.terminals.get(terminalId);
@@ -211,7 +247,10 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
   setTerminals: (terminals) => {
     const map = new Map<TerminalId, TerminalSessionInfo>();
     for (const t of terminals) {
-      map.set(t.terminalId, mergeTerminalWithEphemeralState(t, get().terminals.get(t.terminalId)));
+      map.set(t.terminalId, mergeTerminalWithEphemeralState({
+        ...t,
+        scrollback: t.scrollback ?? DEFAULT_TERMINAL_SCROLLBACK,
+      }, get().terminals.get(t.terminalId)));
     }
     set((state) => ({
       terminals: map,

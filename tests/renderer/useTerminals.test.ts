@@ -11,6 +11,16 @@ vi.mock('@renderer/transport', () => ({
 }));
 
 describe('useTerminals (Store-Integration)', () => {
+  const protection = {
+    mode: 'normal' as const,
+    reason: 'none' as const,
+    outputBytesPerSecond: 0,
+    bufferedBytes: 0,
+    thresholdBytesPerSecond: 1024 * 1024,
+    warning: null,
+    updatedAt: 0,
+  };
+
   beforeEach(() => {
     useTerminalStore.setState({
       terminals: new Map(),
@@ -27,6 +37,8 @@ describe('useTerminals (Store-Integration)', () => {
       workspaceId: 'ws1',
       status: 'active',
       createdAt: Date.now(),
+      scrollback: 5000,
+      protection,
     });
     store.setActiveTerminal('t1');
 
@@ -44,6 +56,8 @@ describe('useTerminals (Store-Integration)', () => {
       workspaceId: 'ws1',
       status: 'active',
       createdAt: Date.now(),
+      scrollback: 5000,
+      protection,
     });
     store.addTerminal({
       terminalId: 't2',
@@ -51,6 +65,8 @@ describe('useTerminals (Store-Integration)', () => {
       workspaceId: 'ws1',
       status: 'active',
       createdAt: Date.now(),
+      scrollback: 5000,
+      protection,
     });
     store.setActiveTerminal('t1');
     store.removeTerminal('t1');
@@ -70,6 +86,8 @@ describe('useTerminals (Store-Integration)', () => {
         workspaceId: 'ws1',
         status: 'active',
         createdAt: 1000,
+        scrollback: 5000,
+        protection,
       },
       {
         terminalId: 't2',
@@ -77,6 +95,8 @@ describe('useTerminals (Store-Integration)', () => {
         workspaceId: 'ws1',
         status: 'idle',
         createdAt: 2000,
+        scrollback: 5000,
+        protection,
       },
     ]);
 

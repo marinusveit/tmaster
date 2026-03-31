@@ -96,6 +96,16 @@ describe('assistant prompt handlers', () => {
       terminalId: 't-7',
       label: { prefix: 'T', index: 7 },
       workspaceId: 'ws-1',
+      scrollback: 5000,
+      protection: {
+        mode: 'normal',
+        reason: 'none',
+        outputBytesPerSecond: 0,
+        bufferedBytes: 0,
+        thresholdBytesPerSecond: 1024 * 1024,
+        warning: null,
+        updatedAt: 0,
+      },
     }));
     const writeTerminal = vi.fn();
 
@@ -120,6 +130,16 @@ describe('assistant prompt handlers', () => {
       terminalId: 't-8',
       label: { prefix: 'T', index: 8 },
       workspaceId: 'ws-1',
+      scrollback: 5000,
+      protection: {
+        mode: 'normal',
+        reason: 'none',
+        outputBytesPerSecond: 0,
+        bufferedBytes: 0,
+        thresholdBytesPerSecond: 1024 * 1024,
+        warning: null,
+        updatedAt: 0,
+      },
     }));
     const writeTerminal = vi.fn();
 

@@ -125,6 +125,16 @@ describe('assistantStore', () => {
       workspaceId: 'ws1',
       status: 'active',
       createdAt: Date.now(),
+      scrollback: 5000,
+      protection: {
+        mode: 'normal',
+        reason: 'none',
+        outputBytesPerSecond: 0,
+        bufferedBytes: 0,
+        thresholdBytesPerSecond: 1024 * 1024,
+        warning: null,
+        updatedAt: 0,
+      },
     });
 
     await store.executeSuggestionAction('s1', {
@@ -247,6 +257,16 @@ describe('assistantStore', () => {
             terminalId: 't-new',
             label: { prefix: 'T', index: 51 },
             workspaceId: 'ws1',
+            scrollback: 5000,
+            protection: {
+              mode: 'normal',
+              reason: 'none',
+              outputBytesPerSecond: 0,
+              bufferedBytes: 0,
+              thresholdBytesPerSecond: 1024 * 1024,
+              warning: null,
+              updatedAt: 0,
+            },
           });
         }
         return Promise.resolve(undefined);

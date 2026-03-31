@@ -108,6 +108,7 @@ export const TerminalTabs = ({
           <TerminalTab
             key={terminal.terminalId}
             label={terminal.label}
+            protection={terminal.protection}
             isActive={terminal.terminalId === activeTerminalId}
             isDragging={terminal.terminalId === draggedTerminalId}
             dropIndicator={dropIndicator?.terminalId === terminal.terminalId ? dropIndicator.position : null}

@@ -2,6 +2,10 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node-pty';
 import type { IPty } from 'node-pty';
+import {
+  DEFAULT_TERMINAL_SCROLLBACK,
+  TERMINAL_PROTECTION_THRESHOLD_BYTES_PER_SECOND,
+} from '../../shared/types/terminal';
 import type {
   CreateTerminalRequest,
   CreateTerminalResponse,
@@ -10,10 +14,18 @@ import type {
   TerminalExitEvent,
   TerminalId,
   TerminalLabel,
+  TerminalProtectionEvent,
+  TerminalProtectionReason,
+  TerminalProtectionState,
   TerminalSessionInfo,
 } from '../../shared/types/terminal';
 import type { WorkspaceId } from '../../shared/types/workspace';
 import { MAX_TERMINALS, TERMINAL_LABEL_PREFIX } from '../../shared/constants/defaults';
+
+interface OutputRateBucket {
+  bucketStart: number;
+  bytes: number;
+}
 
 interface TerminalSession {
   pty: IPty;
@@ -24,27 +36,39 @@ interface TerminalSession {
   status: 'active' | 'idle' | 'exited';
   createdAt: number;
   lastActivity: number;
+  lastFlushAt: number;
+  scrollback: number;
+  protection: TerminalProtectionState;
+  outputRateBuckets: OutputRateBucket[];
 }
 
 interface TerminalManagerCallbacks {
   onData: (event: TerminalDataEvent) => void;
   onExit: (event: TerminalExitEvent) => void;
   onStatusChange?: (terminalId: TerminalId, status: 'active' | 'idle' | 'exited') => void;
+  onProtectionChange?: (event: TerminalProtectionEvent) => void;
 }
 
 export class TerminalManager {
+  private static readonly DEFAULT_WORKSPACE_ID = 'default';
+  private static readonly OUTPUT_RATE_BUCKET_MS = 100;
+  private static readonly OUTPUT_RATE_WINDOW_MS = 1000;
+  private static readonly THROTTLED_FLUSH_INTERVAL_MS = 64;
+  private static readonly NORMAL_FLUSH_INTERVAL_MS = 16;
+  private static readonly THROTTLE_RECOVERY_BYTES_PER_SECOND = 768 * 1024;
+  private static readonly BUFFER_PRESSURE_WARNING_BYTES = 256 * 1024;
+
   private readonly sessions = new Map<TerminalId, TerminalSession>();
   private readonly buffers = new Map<TerminalId, string[]>();
   private readonly flushInterval: NodeJS.Timeout;
   private readonly labelCounters = new Map<WorkspaceId, number>();
   private isDisposed = false;
-  private static readonly DEFAULT_WORKSPACE_ID = 'default';
 
   public constructor(private readonly callbacks: TerminalManagerCallbacks) {
     // 16ms Batching zum Schutz der Renderer-Event-Queue.
     this.flushInterval = setInterval(() => {
       this.flushBuffers();
-    }, 16);
+    }, TerminalManager.NORMAL_FLUSH_INTERVAL_MS);
   }
 
   /**
@@ -85,6 +109,7 @@ export class TerminalManager {
     const label = this.getNextLabel(workspaceId);
     const displayOrder = this.getNextDisplayOrder(workspaceId);
     const shell = request.shell ?? this.getDefaultShell();
+    const scrollback = this.resolveScrollback(request.scrollback);
     const pty = spawn(shell, [], {
       name: 'xterm-256color',
       cols: 80,
@@ -100,14 +125,18 @@ export class TerminalManager {
     // in einen stale JS-Callback schreibt (SIGSEGV).
     const dataDisposable = pty.onData((data) => {
       const chunks = this.buffers.get(terminalId);
-      if (!chunks) {
+      const currentSession = this.sessions.get(terminalId);
+      if (!chunks || !currentSession) {
         return;
       }
+
+      const now = Date.now();
+      const chunkBytes = Buffer.byteLength(data, 'utf8');
+
       chunks.push(data);
-      const currentSession = this.sessions.get(terminalId);
-      if (currentSession) {
-        currentSession.lastActivity = Date.now();
-      }
+      currentSession.lastActivity = now;
+      this.recordOutputSample(currentSession, chunkBytes, now);
+      this.updateProtectionState(terminalId, currentSession, now);
     });
 
     const session: TerminalSession = {
@@ -119,6 +148,10 @@ export class TerminalManager {
       status: 'active',
       createdAt: Date.now(),
       lastActivity: Date.now(),
+      lastFlushAt: 0,
+      scrollback,
+      protection: this.createDefaultProtectionState(),
+      outputRateBuckets: [],
     };
     this.sessions.set(terminalId, session);
 
@@ -143,7 +176,14 @@ export class TerminalManager {
       this.callbacks.onExit({ terminalId, exitCode, signal });
     });
 
-    return { terminalId, label, workspaceId, displayOrder };
+    return {
+      terminalId,
+      label,
+      workspaceId,
+      displayOrder,
+      scrollback,
+      protection: { ...session.protection },
+    };
   }
 
   public writeTerminal(terminalId: TerminalId, data: string): void {
@@ -214,6 +254,8 @@ export class TerminalManager {
       displayOrder: session.displayOrder,
       status: session.status,
       createdAt: session.createdAt,
+      scrollback: session.scrollback,
+      protection: { ...session.protection },
     }));
   }
 
@@ -231,6 +273,8 @@ export class TerminalManager {
         displayOrder: session.displayOrder,
         status: session.status,
         createdAt: session.createdAt,
+        scrollback: session.scrollback,
+        protection: { ...session.protection },
         lastActivity: session.lastActivity,
       });
     }
@@ -251,6 +295,8 @@ export class TerminalManager {
       displayOrder: session.displayOrder,
       status: session.status,
       createdAt: session.createdAt,
+      scrollback: session.scrollback,
+      protection: { ...session.protection },
       lastActivity: session.lastActivity,
     };
   }
@@ -267,7 +313,6 @@ export class TerminalManager {
     for (const terminalId of Array.from(this.sessions.keys())) {
       this.closeTerminal(terminalId);
     }
-
   }
 
   public dispose(): void {
@@ -281,14 +326,40 @@ export class TerminalManager {
   }
 
   private flushBuffers(): void {
+    const now = Date.now();
+
     for (const [terminalId, chunks] of this.buffers) {
       if (chunks.length === 0) {
         continue;
       }
 
+      const session = this.sessions.get(terminalId);
+      if (!session) {
+        continue;
+      }
+
+      const flushInterval = session.protection.mode === 'throttled'
+        ? TerminalManager.THROTTLED_FLUSH_INTERVAL_MS
+        : TerminalManager.NORMAL_FLUSH_INTERVAL_MS;
+
+      if (session.lastFlushAt !== 0 && now - session.lastFlushAt < flushInterval) {
+        continue;
+      }
+
       const data = chunks.join('');
       chunks.length = 0;
+      session.lastFlushAt = now;
+      this.updateProtectionState(terminalId, session, now, 0);
       this.callbacks.onData({ terminalId, data });
+    }
+
+    for (const [terminalId, session] of this.sessions) {
+      const chunks = this.buffers.get(terminalId);
+      if (chunks && chunks.length > 0) {
+        continue;
+      }
+
+      this.updateProtectionState(terminalId, session, now);
     }
   }
 
@@ -310,5 +381,118 @@ export class TerminalManager {
       ([key, value]) => typeof value === 'string' && !TerminalManager.STRIPPED_ENV_VARS.has(key),
     );
     return Object.fromEntries(entries) as Record<string, string>;
+  }
+
+  private resolveScrollback(scrollback: number | undefined): number {
+    if (scrollback === undefined) {
+      return DEFAULT_TERMINAL_SCROLLBACK;
+    }
+
+    if (!Number.isInteger(scrollback) || scrollback < 1) {
+      throw new Error('Invalid scrollback value');
+    }
+
+    return scrollback;
+  }
+
+  private createDefaultProtectionState(): TerminalProtectionState {
+    return {
+      mode: 'normal',
+      reason: 'none',
+      outputBytesPerSecond: 0,
+      bufferedBytes: 0,
+      thresholdBytesPerSecond: TERMINAL_PROTECTION_THRESHOLD_BYTES_PER_SECOND,
+      warning: null,
+      updatedAt: Date.now(),
+    };
+  }
+
+  private recordOutputSample(session: TerminalSession, bytes: number, now: number): void {
+    const bucketStart = now - (now % TerminalManager.OUTPUT_RATE_BUCKET_MS);
+    const lastBucket = session.outputRateBuckets.at(-1);
+
+    if (lastBucket && lastBucket.bucketStart === bucketStart) {
+      lastBucket.bytes += bytes;
+    } else {
+      session.outputRateBuckets.push({ bucketStart, bytes });
+    }
+
+    session.protection.bufferedBytes += bytes;
+    this.pruneOutputRateBuckets(session, now);
+  }
+
+  private pruneOutputRateBuckets(session: TerminalSession, now: number): void {
+    const oldestBucketStart = now - TerminalManager.OUTPUT_RATE_WINDOW_MS;
+    while (session.outputRateBuckets[0] && session.outputRateBuckets[0].bucketStart < oldestBucketStart) {
+      session.outputRateBuckets.shift();
+    }
+  }
+
+  private getOutputBytesPerSecond(session: TerminalSession, now: number): number {
+    this.pruneOutputRateBuckets(session, now);
+    return session.outputRateBuckets.reduce((sum, bucket) => sum + bucket.bytes, 0);
+  }
+
+  private buildProtectionState(
+    session: TerminalSession,
+    now: number,
+    bufferedBytes = session.protection.bufferedBytes,
+  ): TerminalProtectionState {
+    const outputBytesPerSecond = this.getOutputBytesPerSecond(session, now);
+    const shouldThrottle = session.protection.mode === 'throttled'
+      ? outputBytesPerSecond >= TerminalManager.THROTTLE_RECOVERY_BYTES_PER_SECOND
+      : outputBytesPerSecond >= TERMINAL_PROTECTION_THRESHOLD_BYTES_PER_SECOND;
+    const hasBufferPressure = bufferedBytes >= TerminalManager.BUFFER_PRESSURE_WARNING_BYTES;
+    const reason: TerminalProtectionReason = shouldThrottle
+      ? 'output-rate'
+      : hasBufferPressure
+        ? 'buffer-pressure'
+        : 'none';
+
+    let warning: string | null = null;
+    if (reason === 'output-rate') {
+      warning = 'High output detected. Rendering is throttled for this terminal to protect responsiveness.';
+    } else if (reason === 'buffer-pressure') {
+      warning = 'Terminal output is building up quickly. Buffering remains limited to protect memory.';
+    }
+
+    return {
+      mode: shouldThrottle ? 'throttled' : 'normal',
+      reason,
+      outputBytesPerSecond,
+      bufferedBytes,
+      thresholdBytesPerSecond: TERMINAL_PROTECTION_THRESHOLD_BYTES_PER_SECOND,
+      warning,
+      updatedAt: now,
+    };
+  }
+
+  private updateProtectionState(
+    terminalId: TerminalId,
+    session: TerminalSession,
+    now: number,
+    bufferedBytes = session.protection.bufferedBytes,
+  ): void {
+    const nextProtection = this.buildProtectionState(session, now, bufferedBytes);
+    const shouldEmit = !this.isProtectionStateEquivalent(session.protection, nextProtection);
+    session.protection = nextProtection;
+
+    if (!shouldEmit) {
+      return;
+    }
+
+    this.callbacks.onProtectionChange?.({
+      terminalId,
+      protection: { ...session.protection },
+    });
+  }
+
+  private isProtectionStateEquivalent(
+    left: TerminalProtectionState,
+    right: TerminalProtectionState,
+  ): boolean {
+    return left.mode === right.mode
+      && left.reason === right.reason
+      && left.warning === right.warning;
   }
 }

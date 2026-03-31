@@ -464,6 +464,9 @@ const bootstrap = async (): Promise<void> => {
     onStatusChange: (terminalId, status) => {
       broadcast(IPC_CHANNELS.terminalStatus, { terminalId, status });
     },
+    onProtectionChange: (event) => {
+      broadcast(IPC_CHANNELS.terminalProtection, event);
+    },
   });
 
   // Label-Counter aus DB laden

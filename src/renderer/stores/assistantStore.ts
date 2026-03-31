@@ -326,6 +326,8 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
             displayOrder: response.displayOrder ?? response.label.index,
             status: 'active',
             createdAt: Date.now(),
+            scrollback: response.scrollback,
+            protection: response.protection,
           });
           terminalStore.setActiveTerminal(response.terminalId);
 

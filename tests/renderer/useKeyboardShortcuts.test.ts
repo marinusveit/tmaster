@@ -102,8 +102,40 @@ describe('useKeyboardShortcuts (Handler-Logik)', () => {
   it('Ctrl+1 wechselt zum Terminal an Position 0', () => {
     const onSwitchTerminal = vi.fn();
     const terminals = [
-      { terminalId: 't1', label: { prefix: 'T', index: 1 }, workspaceId: 'ws1', status: 'active' as const, createdAt: 1 },
-      { terminalId: 't2', label: { prefix: 'T', index: 2 }, workspaceId: 'ws1', status: 'active' as const, createdAt: 2 },
+      {
+        terminalId: 't1',
+        label: { prefix: 'T', index: 1 },
+        workspaceId: 'ws1',
+        status: 'active' as const,
+        createdAt: 1,
+        scrollback: 5000,
+        protection: {
+          mode: 'normal' as const,
+          reason: 'none' as const,
+          outputBytesPerSecond: 0,
+          bufferedBytes: 0,
+          thresholdBytesPerSecond: 1024 * 1024,
+          warning: null,
+          updatedAt: 0,
+        },
+      },
+      {
+        terminalId: 't2',
+        label: { prefix: 'T', index: 2 },
+        workspaceId: 'ws1',
+        status: 'active' as const,
+        createdAt: 2,
+        scrollback: 5000,
+        protection: {
+          mode: 'normal' as const,
+          reason: 'none' as const,
+          outputBytesPerSecond: 0,
+          bufferedBytes: 0,
+          thresholdBytesPerSecond: 1024 * 1024,
+          warning: null,
+          updatedAt: 0,
+        },
+      },
     ];
 
     const handler = (e: KeyboardEvent) => {
@@ -128,7 +160,23 @@ describe('useKeyboardShortcuts (Handler-Logik)', () => {
   it('Ctrl+9 tut nichts wenn nur 2 Terminals existieren', () => {
     const onSwitchTerminal = vi.fn();
     const terminals = [
-      { terminalId: 't1', label: { prefix: 'T', index: 1 }, workspaceId: 'ws1', status: 'active' as const, createdAt: 1 },
+      {
+        terminalId: 't1',
+        label: { prefix: 'T', index: 1 },
+        workspaceId: 'ws1',
+        status: 'active' as const,
+        createdAt: 1,
+        scrollback: 5000,
+        protection: {
+          mode: 'normal' as const,
+          reason: 'none' as const,
+          outputBytesPerSecond: 0,
+          bufferedBytes: 0,
+          thresholdBytesPerSecond: 1024 * 1024,
+          warning: null,
+          updatedAt: 0,
+        },
+      },
     ];
 
     const handler = (e: KeyboardEvent) => {

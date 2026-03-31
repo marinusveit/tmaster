@@ -53,6 +53,16 @@ const createTerminalManagerMock = () => {
       label: { prefix: 'T', index: 1 },
       workspaceId: 'ws-1',
       displayOrder: 1,
+      scrollback: 5000,
+      protection: {
+        mode: 'normal',
+        reason: 'none',
+        outputBytesPerSecond: 0,
+        bufferedBytes: 0,
+        thresholdBytesPerSecond: 1024 * 1024,
+        warning: null,
+        updatedAt: 0,
+      },
     })),
     writeTerminal: vi.fn(),
     sendInput: vi.fn(),
@@ -126,18 +136,25 @@ describe('registerTerminalHandlers', () => {
     const terminalManager = createTerminalManagerMock();
     registerTerminalHandlers(ipcMain as never, terminalManager as never);
 
-    const result = ipcMain.invoke(IPC_CHANNELS.terminalCreate, { cwd: '/tmp', workspaceId: 'ws-1' }) as {
+    const result = ipcMain.invoke(IPC_CHANNELS.terminalCreate, {
+      cwd: '/tmp',
+      workspaceId: 'ws-1',
+      scrollback: 1500,
+    }) as {
       terminalId: string;
       workspaceId: string;
+      scrollback: number;
     };
 
     expect(result.terminalId).toBe('t-1');
     expect(result.workspaceId).toBe('ws-1');
+    expect(result.scrollback).toBe(5000);
     expect(terminalManager.createTerminal).toHaveBeenCalledWith({
       cwd: '/tmp',
       shell: undefined,
       workspaceId: 'ws-1',
       label: undefined,
+      scrollback: 1500,
     });
   });
 
@@ -148,6 +165,14 @@ describe('registerTerminalHandlers', () => {
 
     ipcMain.invoke(IPC_CHANNELS.terminalCreate, null);
     expect(terminalManager.createTerminal).toHaveBeenCalledWith({});
+  });
+
+  it('wirft bei ungültigem create payload mit scrollback Override', () => {
+    const ipcMain = createMockIpcMain();
+    const terminalManager = createTerminalManagerMock();
+    registerTerminalHandlers(ipcMain as never, terminalManager as never);
+
+    expect(() => ipcMain.invoke(IPC_CHANNELS.terminalCreate, { scrollback: 0 })).toThrow('Invalid create payload');
   });
 
   it('schreibt in ein Terminal via IPC', () => {
@@ -245,6 +270,16 @@ describe('registerTerminalHandlers', () => {
         displayOrder: 1,
         status: 'active',
         createdAt: 1,
+        scrollback: 5000,
+        protection: {
+          mode: 'normal',
+          reason: 'none',
+          outputBytesPerSecond: 0,
+          bufferedBytes: 0,
+          thresholdBytesPerSecond: 1024 * 1024,
+          warning: null,
+          updatedAt: 0,
+        },
       },
     ]);
     registerTerminalHandlers(ipcMain as never, terminalManager as never);

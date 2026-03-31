@@ -10,6 +10,16 @@ const makeTerminal = (overrides: Partial<TerminalSessionInfo> = {}): TerminalSes
   displayOrder: 1,
   status: 'active',
   createdAt: Date.now(),
+  scrollback: 5000,
+  protection: {
+    mode: 'normal',
+    reason: 'none',
+    outputBytesPerSecond: 0,
+    bufferedBytes: 0,
+    thresholdBytesPerSecond: 1024 * 1024,
+    warning: null,
+    updatedAt: 0,
+  },
   ...overrides,
 });
 
@@ -95,6 +105,26 @@ describe('terminalStore', () => {
 
     store.updateStatus('t1', 'exited');
     expect(useTerminalStore.getState().terminals.get('t1')?.status).toBe('exited');
+  });
+
+  it('updated den Protection-State eines Terminals', () => {
+    const store = useTerminalStore.getState();
+    store.addTerminal(makeTerminal({ terminalId: 't1' }));
+
+    store.updateProtection('t1', {
+      mode: 'throttled',
+      reason: 'output-rate',
+      outputBytesPerSecond: 1_200_000,
+      bufferedBytes: 32_000,
+      thresholdBytesPerSecond: 1024 * 1024,
+      warning: 'High output detected.',
+      updatedAt: 10,
+    });
+
+    expect(useTerminalStore.getState().terminals.get('t1')?.protection).toEqual(expect.objectContaining({
+      mode: 'throttled',
+      reason: 'output-rate',
+    }));
   });
 
   it('setzt Waiting-State mit Kontext', () => {

@@ -8,6 +8,16 @@ const makeTerminal = (index: number): TerminalSessionInfo => ({
   workspaceId: 'ws-1',
   status: 'active',
   createdAt: index,
+  scrollback: 5000,
+  protection: {
+    mode: 'normal',
+    reason: 'none',
+    outputBytesPerSecond: 0,
+    bufferedBytes: 0,
+    thresholdBytesPerSecond: 1024 * 1024,
+    warning: null,
+    updatedAt: 0,
+  },
 });
 
 describe('getVisibleTerminals', () => {

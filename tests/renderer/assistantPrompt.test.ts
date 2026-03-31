@@ -96,6 +96,16 @@ describe('assistant prompt collaboration store', () => {
               workspaceId: 'ws1',
               status: 'active',
               createdAt: Date.now(),
+              scrollback: 5000,
+              protection: {
+                mode: 'normal',
+                reason: 'none',
+                outputBytesPerSecond: 0,
+                bufferedBytes: 0,
+                thresholdBytesPerSecond: 1024 * 1024,
+                warning: null,
+                updatedAt: 0,
+              },
             },
           ],
         };

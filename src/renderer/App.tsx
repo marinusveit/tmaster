@@ -58,7 +58,13 @@ export const App = (): JSX.Element => {
     const prev = prevWorkspaceTerminalsRef.current;
     if (
       prev.length === rawWorkspaceTerminals.length
-      && prev.every((t, i) => t.terminalId === rawWorkspaceTerminals[i]?.terminalId && t.status === rawWorkspaceTerminals[i]?.status)
+      && prev.every((t, i) => {
+        const nextTerminal = rawWorkspaceTerminals[i];
+        return t.terminalId === nextTerminal?.terminalId
+          && t.status === nextTerminal?.status
+          && t.protection.mode === nextTerminal?.protection.mode
+          && t.protection.warning === nextTerminal?.protection.warning;
+      })
     ) {
       return prev;
     }
@@ -71,7 +77,13 @@ export const App = (): JSX.Element => {
     const prev = prevAllTerminalsRef.current;
     if (
       prev.length === rawAllTerminals.length
-      && prev.every((t, i) => t.terminalId === rawAllTerminals[i]?.terminalId && t.status === rawAllTerminals[i]?.status)
+      && prev.every((t, i) => {
+        const nextTerminal = rawAllTerminals[i];
+        return t.terminalId === nextTerminal?.terminalId
+          && t.status === nextTerminal?.status
+          && t.protection.mode === nextTerminal?.protection.mode
+          && t.protection.warning === nextTerminal?.protection.warning;
+      })
     ) {
       return prev;
     }
