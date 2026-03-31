@@ -2074,6 +2074,7 @@ html {
 }
 
 .assistant-chat__message {
+  position: relative;
   max-width: 92%;
   border-radius: var(--radius-md);
   padding: 7px 10px;
@@ -2093,6 +2094,77 @@ html {
   border: 1px solid var(--border-default);
   background: var(--bg-elevated);
   color: var(--text-secondary);
+}
+
+.assistant-chat__message--streaming::after {
+  content: '';
+  display: inline-block;
+  width: 0.55rem;
+  height: 1rem;
+  margin-left: 0.28rem;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  vertical-align: text-bottom;
+  animation: assistantCursorPulse 1s ease-in-out infinite;
+}
+
+.assistant-chat__markdown {
+  color: inherit;
+}
+
+.assistant-chat__markdown > :first-child {
+  margin-top: 0;
+}
+
+.assistant-chat__markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.assistant-chat__markdown p,
+.assistant-chat__markdown ul,
+.assistant-chat__markdown ol,
+.assistant-chat__markdown pre,
+.assistant-chat__markdown blockquote {
+  margin: 0 0 0.55rem;
+}
+
+.assistant-chat__markdown ul,
+.assistant-chat__markdown ol {
+  padding-left: 1rem;
+}
+
+.assistant-chat__markdown pre,
+.assistant-chat__markdown code {
+  font-family: var(--font-mono);
+}
+
+.assistant-chat__markdown code {
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--bg-app) 82%, var(--accent-primary) 18%);
+  padding: 0.1rem 0.26rem;
+  color: var(--text-primary);
+}
+
+.assistant-chat__markdown pre {
+  overflow-x: auto;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-app) 90%, black 10%);
+  padding: 0.7rem 0.8rem;
+}
+
+.assistant-chat__markdown pre code {
+  display: block;
+  background: transparent;
+  padding: 0;
+}
+
+.assistant-chat__markdown a {
+  color: var(--accent-primary);
+}
+
+.assistant-chat__markdown a:hover {
+  color: var(--accent-strong);
 }
 
 /* Typing Indicator */
@@ -2116,6 +2188,17 @@ html {
 
 .assistant-chat__dot:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+@keyframes assistantCursorPulse {
+  0%,
+  100% {
+    opacity: 0.28;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Chat Input */

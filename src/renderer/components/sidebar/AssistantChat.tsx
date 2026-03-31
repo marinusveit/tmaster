@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
+import Markdown from 'react-markdown';
 import type { AssistantMessage, PromptAgentType, PromptDraft } from '@shared/types/assistant';
 import type { WaitingTerminalReply } from '@renderer/stores/assistantStore';
 import { PromptDraftEditor } from './PromptDraftEditor';
+
+const AUTO_SCROLL_THRESHOLD_PX = 48;
+
+interface AutoScrollMetrics {
+  clientHeight: number;
+  scrollHeight: number;
+  scrollTop: number;
+}
 
 interface AssistantChatProps {
   messages: AssistantMessage[];
@@ -19,6 +28,15 @@ interface AssistantChatProps {
   onExecuteDraft: () => void;
   onDiscardDraft: () => void;
 }
+
+export const isAssistantChatNearBottom = ({
+  clientHeight,
+  scrollHeight,
+  scrollTop,
+}: AutoScrollMetrics): boolean => {
+  const distanceToBottom = scrollHeight - (scrollTop + clientHeight);
+  return distanceToBottom <= AUTO_SCROLL_THRESHOLD_PX;
+};
 
 export const AssistantChat = ({
   messages,
@@ -38,12 +56,38 @@ export const AssistantChat = ({
 }: AssistantChatProps): JSX.Element => {
   const [input, setInput] = useState('');
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
-  const endRef = useRef<HTMLDivElement>(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const replyInputRefs = useRef(new Map<string, HTMLInputElement | null>());
 
+  const hasStreamingMessage = messages.some((message) => message.isStreaming);
+
+  const updateAutoScrollState = (): void => {
+    const container = messagesRef.current;
+    if (!container) {
+      return;
+    }
+
+    setShouldAutoScroll(
+      isAssistantChatNearBottom({
+        clientHeight: container.clientHeight,
+        scrollHeight: container.scrollHeight,
+        scrollTop: container.scrollTop,
+      }),
+    );
+  };
+
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, pendingReplies, isTyping]);
+    const container = messagesRef.current;
+    if (!container || !shouldAutoScroll) {
+      return;
+    }
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: 'smooth',
+    });
+  }, [messages, pendingReplies, isTyping, shouldAutoScroll]);
 
   useEffect(() => {
     setReplyDrafts((current) => {
@@ -81,6 +125,7 @@ export const AssistantChat = ({
       return;
     }
 
+    setShouldAutoScroll(true);
     onSendMessage(trimmed);
     setInput('');
   };
@@ -101,7 +146,11 @@ export const AssistantChat = ({
   return (
     <section className="assistant-chat" aria-label="Chat">
       <h3 className="assistant-chat__title">Chat</h3>
-      <div className="assistant-chat__messages">
+      <div
+        ref={messagesRef}
+        className="assistant-chat__messages"
+        onScroll={updateAutoScrollState}
+      >
         {messages.length === 0 && !isTyping && (
           <p className="assistant-chat__empty">Frag mich etwas über deine Terminals...</p>
         )}
@@ -166,21 +215,35 @@ export const AssistantChat = ({
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`assistant-chat__message assistant-chat__message--${message.role}`}
+            className={`assistant-chat__message assistant-chat__message--${message.role}${message.isStreaming ? ' assistant-chat__message--streaming' : ''}`}
+            aria-live={message.isStreaming ? 'polite' : undefined}
           >
-            {message.content}
+            {message.role === 'assistant' ? (
+              <div className="assistant-chat__markdown">
+                <Markdown
+                  components={{
+                    a: ({ node, ...props }) => {
+                      void node;
+                      return <a {...props} target="_blank" rel="noreferrer" />;
+                    },
+                  }}
+                >
+                  {message.content}
+                </Markdown>
+              </div>
+            ) : (
+              message.content
+            )}
           </div>
         ))}
 
-        {isTyping && (
+        {isTyping && !hasStreamingMessage && (
           <div className="assistant-chat__typing" aria-live="polite">
             <span className="assistant-chat__dot" />
             <span className="assistant-chat__dot" />
             <span className="assistant-chat__dot" />
           </div>
         )}
-
-        <div ref={endRef} />
       </div>
 
       {currentDraft && (

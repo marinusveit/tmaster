@@ -249,6 +249,32 @@ describe('assistantStore', () => {
     expect(useAssistantStore.getState().isTyping).toBe(true);
   });
 
+  it('handleStreamChunk legt Streaming-Nachricht an, erweitert sie und finalisiert sie', () => {
+    const store = useAssistantStore.getState();
+
+    store.handleStreamChunk({
+      messageId: 'stream-1',
+      text: 'Hallo ',
+      isFinal: false,
+    });
+    store.handleStreamChunk({
+      messageId: 'stream-1',
+      text: '`Welt`',
+      isFinal: true,
+    });
+
+    const state = useAssistantStore.getState();
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toMatchObject({
+      id: 'stream-1',
+      role: 'assistant',
+      content: 'Hallo `Welt`',
+      isStreaming: false,
+    });
+    expect(state.lastStreamingMessageId).toBeNull();
+    expect(state.isTyping).toBe(false);
+  });
+
   it('sendMessage erstellt ein einfaches Terminal bei Management-Befehl', async () => {
     vi.mocked(transport.invoke).mockImplementation(
       ((channel: string) => {
