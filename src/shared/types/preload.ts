@@ -23,6 +23,11 @@ import type { TerminalEvent } from './event';
 import type { ListSessionsRequest, ListSessionsResponse } from './session';
 import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from './broker';
 import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from './assistant';
+import type {
+  GetKeybindingsResponse,
+  ResetKeybindingRequest,
+  SetKeybindingRequest,
+} from './keybindings';
 import type { GetPreferencesResponse, SetPreferenceRequest } from './preferences';
 import type { SaveUiStateRequest, UiState } from './uiState';
 import type { AppNotification, NotificationReplyRequest } from './notification';
@@ -48,6 +53,9 @@ export interface TmasterApi {
   updateWorkspace: (request: UpdateWorkspaceRequest) => Promise<Workspace>;
   getPreferences: () => Promise<GetPreferencesResponse>;
   setPreference: (request: SetPreferenceRequest) => Promise<GetPreferencesResponse>;
+  getKeybindings: () => Promise<GetKeybindingsResponse>;
+  setKeybinding: (request: SetKeybindingRequest) => Promise<GetKeybindingsResponse>;
+  resetKeybinding: (request: ResetKeybindingRequest) => Promise<GetKeybindingsResponse>;
   getUiState: () => Promise<UiState>;
   saveUiState: (request: SaveUiStateRequest) => Promise<UiState>;
   listSessions: (request: ListSessionsRequest) => Promise<ListSessionsResponse>;

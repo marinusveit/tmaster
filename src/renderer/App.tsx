@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
+import { formatShortcutForDisplay } from '../common/keybindings';
 import type { TerminalSessionInfo } from '@shared/types/terminal';
 import { useTerminals } from '@renderer/hooks/useTerminals';
 import { useWorkspaces } from '@renderer/hooks/useWorkspaces';
@@ -18,6 +19,7 @@ import { QuickSwitcher } from '@renderer/components/common/QuickSwitcher';
 import { clearTerminalSearch, getOrCreateTerminal } from '@renderer/components/terminal/terminalInstances';
 import { useTerminalStore } from '@renderer/stores/terminalStore';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
+import { useKeybindingStore } from '@renderer/stores/keybindingStore';
 import { useAssistant } from '@renderer/hooks/useAssistant';
 import { usePreferences } from '@renderer/hooks/usePreferences';
 import type { SplitMode } from '@renderer/stores/terminalStore';
@@ -27,6 +29,7 @@ import type { TerminalExportScope } from '@shared/types/terminal';
 import type { UiState } from '@shared/types/uiState';
 
 export const App = (): JSX.Element => {
+  const createTerminalShortcut = useKeybindingStore((state) => state.keybindings.createTerminal);
   const {
     activeTerminalId,
     createTerminal,
@@ -471,7 +474,7 @@ export const App = (): JSX.Element => {
                   Neues Terminal erstellen
                 </button>
                 <span className="terminal-area__empty-hint">
-                  <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd>
+                  {formatShortcutForDisplay(createTerminalShortcut)}
                 </span>
               </div>
             )}

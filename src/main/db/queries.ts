@@ -234,6 +234,12 @@ interface SessionRow {
   shell: string | null;
 }
 
+export interface KeybindingRow {
+  action: string;
+  shortcut: string;
+  updated_at: number;
+}
+
 export interface EventRow {
   id: number;
   session_id: string;
@@ -584,6 +590,29 @@ export const upsertPreference = (
      VALUES (?, ?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
   ).run(key, value, updatedAt);
+};
+
+export const listKeybindings = (db: BetterSqlite3.Database): KeybindingRow[] => {
+  return db.prepare('SELECT * FROM keybindings ORDER BY action ASC').all() as KeybindingRow[];
+};
+
+export const upsertKeybinding = (
+  db: BetterSqlite3.Database,
+  action: string,
+  shortcut: string,
+  updatedAt: number,
+): void => {
+  db.prepare(
+    `INSERT INTO keybindings (action, shortcut, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(action) DO UPDATE SET
+       shortcut = excluded.shortcut,
+       updated_at = excluded.updated_at`,
+  ).run(action, shortcut, updatedAt);
+};
+
+export const deleteKeybinding = (db: BetterSqlite3.Database, action: string): void => {
+  db.prepare('DELETE FROM keybindings WHERE action = ?').run(action);
 };
 
 /**

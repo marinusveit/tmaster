@@ -26,6 +26,11 @@ import type { TerminalEvent } from '../shared/types/event';
 import type { ListSessionsRequest, ListSessionsResponse } from '../shared/types/session';
 import type { ContextQuery, ContextResult, FileChangeEvent, FileConflict } from '../shared/types/broker';
 import type { AssistantMessage, AssistantStreamChunk, PromptDraft, RichSuggestion } from '../shared/types/assistant';
+import type {
+  GetKeybindingsResponse,
+  ResetKeybindingRequest,
+  SetKeybindingRequest,
+} from '../shared/types/keybindings';
 import type { GetPreferencesResponse, SetPreferenceRequest } from '../shared/types/preferences';
 import type { SaveUiStateRequest, UiState } from '../shared/types/uiState';
 import type { AppNotification, NotificationReplyRequest } from '../shared/types/notification';
@@ -115,6 +120,15 @@ const api: TmasterApi = {
   },
   setPreference: (request: SetPreferenceRequest): Promise<GetPreferencesResponse> => {
     return ipcRenderer.invoke(IPC_CHANNELS.preferencesSet, request);
+  },
+  getKeybindings: (): Promise<GetKeybindingsResponse> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.keybindingsGet);
+  },
+  setKeybinding: (request: SetKeybindingRequest): Promise<GetKeybindingsResponse> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.keybindingsSet, request);
+  },
+  resetKeybinding: (request: ResetKeybindingRequest): Promise<GetKeybindingsResponse> => {
+    return ipcRenderer.invoke(IPC_CHANNELS.keybindingsReset, request);
   },
   getUiState: (): Promise<UiState> => {
     return ipcRenderer.invoke(IPC_CHANNELS.uiStateGet);

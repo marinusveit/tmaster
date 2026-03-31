@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
+import { findMatchingKeybindingAction } from '../../common/keybindings';
 import type { TerminalSessionInfo } from '@shared/types/terminal';
 import type { Workspace } from '@shared/types/workspace';
 import { useAssistantStore } from '@renderer/stores/assistantStore';
+import { useKeybindingStore } from '@renderer/stores/keybindingStore';
 import { useQuickSwitcherStore } from '@renderer/stores/quickSwitcherStore';
-import { isQuickSwitcherShortcut } from '@renderer/utils/quickSwitcher';
 
 interface KeyboardShortcutHandlers {
   onCreateTerminal: () => void;
@@ -34,15 +35,15 @@ export const useKeyboardShortcuts = ({
   workspaces,
   activeWorkspaceId,
 }: KeyboardShortcutHandlers): void => {
+  const keybindings = useKeybindingStore((state) => state.keybindings);
+  const loadKeybindings = useKeybindingStore((state) => state.loadKeybindings);
+
+  useEffect(() => {
+    void loadKeybindings();
+  }, [loadKeybindings]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Mod+K → Quick-Switcher öffnen (Cmd auf macOS, Ctrl als Fallback).
-      if (isQuickSwitcherShortcut(e)) {
-        e.preventDefault();
-        useQuickSwitcherStore.getState().open();
-        return;
-      }
-
       const quickSwitcherState = useQuickSwitcherStore.getState();
       if (quickSwitcherState.isOpen) {
         if (e.key === 'Escape') {
@@ -52,10 +53,10 @@ export const useKeyboardShortcuts = ({
         return;
       }
 
-      // Ctrl+F → Suche im aktiven Terminal öffnen
-      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+      const matchingAction = findMatchingKeybindingAction(e, keybindings);
+      if (matchingAction === 'quickSwitcher') {
         e.preventDefault();
-        onOpenSearch();
+        quickSwitcherState.open();
         return;
       }
 
@@ -66,46 +67,37 @@ export const useKeyboardShortcuts = ({
         return;
       }
 
-      // Ctrl+Shift+T → Neues Terminal
-      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-        e.preventDefault();
-        onCreateTerminal();
-        return;
-      }
-
-      // Ctrl+Shift+W → Aktives Terminal schließen
-      if (e.ctrlKey && e.shiftKey && e.key === 'W') {
-        e.preventDefault();
-        onCloseTerminal();
-        return;
-      }
-
-      // Ctrl+Shift+S → Terminal-Output als Datei speichern
-      if (e.ctrlKey && e.shiftKey && e.key === 'S') {
-        e.preventDefault();
-        onSaveTerminalOutput();
-        return;
-      }
-
-      // Ctrl+Tab → Nächster Workspace
-      if (e.ctrlKey && e.key === 'Tab') {
-        e.preventDefault();
-        onNextWorkspace();
-        return;
-      }
-
-      // Ctrl+\ → Split-Mode durchschalten
-      if (e.ctrlKey && e.key === '\\') {
-        e.preventDefault();
-        onToggleSplit();
-        return;
-      }
-
-      // Ctrl+. → Assistant Panel togglen
-      if (e.ctrlKey && e.key === '.') {
-        e.preventDefault();
-        useAssistantStore.getState().toggleExpanded();
-        return;
+      switch (matchingAction) {
+        case 'openSearch':
+          e.preventDefault();
+          onOpenSearch();
+          return;
+        case 'createTerminal':
+          e.preventDefault();
+          onCreateTerminal();
+          return;
+        case 'closeTerminal':
+          e.preventDefault();
+          onCloseTerminal();
+          return;
+        case 'saveTerminalOutput':
+          e.preventDefault();
+          onSaveTerminalOutput();
+          return;
+        case 'nextWorkspace':
+          e.preventDefault();
+          onNextWorkspace();
+          return;
+        case 'toggleSplit':
+          e.preventDefault();
+          onToggleSplit();
+          return;
+        case 'toggleAssistant':
+          e.preventDefault();
+          useAssistantStore.getState().toggleExpanded();
+          return;
+        default:
+          break;
       }
 
       // Escape → Assistant schliessen
@@ -134,6 +126,7 @@ export const useKeyboardShortcuts = ({
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [
     activeWorkspaceId,
+    keybindings,
     isSearchOpen,
     onCloseSearch,
     onCloseTerminal,

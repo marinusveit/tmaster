@@ -93,6 +93,12 @@ export const runMigrations = (db: BetterSqlite3.Database): void => {
       updated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS keybindings (
+      action TEXT PRIMARY KEY,
+      shortcut TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sessions_terminal_id
       ON sessions(terminal_id);
 
