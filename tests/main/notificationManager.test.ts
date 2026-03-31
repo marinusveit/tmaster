@@ -194,15 +194,23 @@ describe('NotificationManager', () => {
       title: 'T3 wartet auf Input',
       level: 'warning',
       workspaceId: 'ws1',
-      action: {
-        label: 'Antworten',
-        type: 'reply-terminal',
-        payload: 't3',
-      },
     }));
     expect(unread[0]?.body).toContain('Run setup now? [Y/n]');
     expect(unread[0]?.body).toContain('Vorschlag: Mit "y" nur bestätigen');
     expect(broadcast).toHaveBeenCalledTimes(1);
+    expect(broadcast).toHaveBeenCalledWith(
+      'notification:show',
+      expect.objectContaining({
+        title: 'T3 wartet auf Input',
+        terminalId: 't3',
+        workspaceId: 'ws1',
+        action: {
+          label: 'Antworten',
+          type: 'reply-terminal',
+          payload: 't3',
+        },
+      }),
+    );
   });
 
   it('waiting dedupliziert identische Rueckfragen innerhalb des Cooldowns', () => {
