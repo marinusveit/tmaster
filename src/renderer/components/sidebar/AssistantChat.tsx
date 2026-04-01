@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ComponentProps } from 'react';
 import Markdown from 'react-markdown';
 import type { AssistantMessage, PromptAgentType, PromptDraft } from '@shared/types/assistant';
 import type { WaitingTerminalReply } from '@renderer/stores/assistantStore';
@@ -40,9 +41,9 @@ export const isAssistantChatNearBottom = ({
 
 export const AssistantChat = ({
   messages,
-  pendingReplies,
-  pendingReplyRequestTerminalId,
-  sendingReplyTerminalIds,
+  pendingReplies = [],
+  pendingReplyRequestTerminalId = null,
+  sendingReplyTerminalIds = [],
   isTyping,
   onSendMessage,
   onSendTerminalReply,
@@ -222,9 +223,10 @@ export const AssistantChat = ({
               <div className="assistant-chat__markdown">
                 <Markdown
                   components={{
-                    a: ({ node, ...props }) => {
+                    a: (props: ComponentProps<'a'> & { node?: unknown }) => {
+                      const { node, ...anchorProps } = props;
                       void node;
-                      return <a {...props} target="_blank" rel="noreferrer" />;
+                      return <a {...anchorProps} target="_blank" rel="noreferrer" />;
                     },
                   }}
                 >
